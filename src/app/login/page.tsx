@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -30,29 +31,6 @@ export default function LoginPage() {
 
     router.push('/')
     router.refresh()
-  }
-
-  const handleEmailSignUp = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${location.origin}/auth/callback`,
-      },
-    })
-
-    if (error) {
-      setError(error.message)
-      setLoading(false)
-      return
-    }
-
-    setError('Check your email for the confirmation link.')
-    setLoading(false)
   }
 
   const handleGoogleLogin = async () => {
@@ -101,7 +79,12 @@ export default function LoginPage() {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">Password</label>
+              <div className="flex justify-between mb-1">
+                <label className="block text-sm font-medium text-zinc-400">Password</label>
+                <Link href="/forgot-password" title="Forgot Password" className="text-xs text-emerald-500 hover:underline">
+                  Forgot?
+                </Link>
+              </div>
               <input
                 type="password"
                 value={password}
@@ -112,22 +95,20 @@ export default function LoginPage() {
               />
             </div>
 
-            <div className="flex gap-3 pt-2">
+            <div className="flex flex-col gap-3 pt-2">
               <button
                 type="submit"
                 disabled={loading}
-                className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-3 px-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-3 px-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Sign In
               </button>
-              <button
-                type="button"
-                onClick={handleEmailSignUp}
-                disabled={loading}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-3 px-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Sign Up
-              </button>
+              <p className="text-center text-sm text-zinc-500">
+                Don&apos;t have an account?{' '}
+                <Link href="/signup" className="text-emerald-500 hover:underline">
+                  Create Account
+                </Link>
+              </p>
             </div>
           </form>
 
