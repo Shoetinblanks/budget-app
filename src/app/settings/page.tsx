@@ -23,7 +23,7 @@ export default function SettingsPage() {
       }
 
       // Ensure profile exists, if not, it will be inserted upon saving
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('profiles')
         .select('pay_frequency, round_up_target')
         .eq('id', user.id)
