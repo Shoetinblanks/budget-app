@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { Settings, Menu, X, User, LogOut, LayoutDashboard } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -49,11 +50,14 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           {/* Left: Logo */}
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-              <span className="text-zinc-950 font-bold text-xl">S</span>
-            </div>
-            <span className="text-white font-bold tracking-tight text-lg hidden sm:block">ShoeBudgeting</span>
+          <Link href="/" className="flex items-center">
+            <Image 
+              src="/logo-1024x1024.png" 
+              alt="ShoeBudgeting" 
+              width={40}
+              height={40}
+              className="rounded-lg h-10 w-auto"
+            />
           </Link>
 
           {/* Right: Desktop Icons */}
