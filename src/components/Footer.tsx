@@ -8,13 +8,13 @@ export default function Footer() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="text-zinc-500 text-sm text-center md:text-left">
           &copy; {currentYear} ShoeBudgeting. All rights reserved.<br />
-          ShoeBudgeting is a service provided by <span className="text-emerald-500 font-medium">Shoetinblanks LLC</span>.
+          ShoeBudgeting is a service provided by <span className="text-blue-500 font-medium">Shoetinblanks LLC</span>.
         </div>
         <div className="flex gap-6 text-sm text-zinc-400">
-          <Link href="/privacy-policy" className="hover:text-emerald-400 transition-colors">
+          <Link href="/privacy-policy" className="hover:text-blue-400 transition-colors">
             Privacy Policy
           </Link>
-          <Link href="/terms-of-service" className="hover:text-emerald-400 transition-colors">
+          <Link href="/terms-of-service" className="hover:text-blue-400 transition-colors">
             Terms of Service
           </Link>
         </div>

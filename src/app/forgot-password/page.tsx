@@ -37,7 +37,7 @@ export default function ForgotPasswordPage() {
           </div>
 
           {message && (
-            <div className={`border rounded-lg p-3 mb-6 text-sm ${message.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-500' : 'bg-red-500/10 border-red-500/50 text-red-500'}`}>
+            <div className={`border rounded-lg p-3 mb-6 text-sm ${message.type === 'success' ? 'bg-blue-500/10 border-blue-500/50 text-blue-500' : 'bg-red-500/10 border-red-500/50 text-red-500'}`}>
               {message.text}
             </div>
           )}
@@ -50,7 +50,7 @@ export default function ForgotPasswordPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 placeholder="you@example.com"
               />
             </div>
@@ -58,14 +58,14 @@ export default function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-3 px-4 rounded-xl transition-colors disabled:opacity-50"
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-xl transition-colors disabled:opacity-50"
             >
               Send Reset Link
             </button>
           </form>
 
           <div className="mt-8 text-center">
-            <Link href="/login" className="text-zinc-500 text-sm hover:text-emerald-500 transition-colors">
+            <Link href="/login" className="text-zinc-500 text-sm hover:text-blue-500 transition-colors">
               Back to Sign In
             </Link>
           </div>

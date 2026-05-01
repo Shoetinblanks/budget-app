@@ -44,7 +44,7 @@ export default function SignupPage() {
           </div>
 
           {error && (
-            <div className={`border rounded-lg p-3 mb-6 text-sm ${error.includes('Check your email') ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-500' : 'bg-red-500/10 border-red-500/50 text-red-500'}`}>
+            <div className={`border rounded-lg p-3 mb-6 text-sm ${error.includes('Check your email') ? 'bg-blue-500/10 border-blue-500/50 text-blue-500' : 'bg-red-500/10 border-red-500/50 text-red-500'}`}>
               {error}
             </div>
           )}
@@ -57,7 +57,7 @@ export default function SignupPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 placeholder="you@example.com"
               />
             </div>
@@ -69,7 +69,7 @@ export default function SignupPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 placeholder="••••••••"
               />
             </div>
@@ -77,7 +77,7 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-3 px-4 rounded-xl transition-colors disabled:opacity-50"
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-xl transition-colors disabled:opacity-50"
             >
               Sign Up
             </button>
@@ -86,7 +86,7 @@ export default function SignupPage() {
           <div className="mt-8 text-center">
             <p className="text-zinc-500 text-sm">
               Already have an account?{' '}
-              <Link href="/login" className="text-emerald-500 hover:underline">
+              <Link href="/login" className="text-blue-500 hover:underline">
                 Sign In
               </Link>
             </p>

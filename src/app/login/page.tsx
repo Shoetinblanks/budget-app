@@ -73,7 +73,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 placeholder="you@example.com"
               />
             </div>
@@ -81,7 +81,7 @@ export default function LoginPage() {
             <div>
               <div className="flex justify-between mb-1">
                 <label className="block text-sm font-medium text-zinc-400">Password</label>
-                <Link href="/forgot-password" title="Forgot Password" className="text-xs text-emerald-500 hover:underline">
+                <Link href="/forgot-password" title="Forgot Password" className="text-xs text-blue-500 hover:underline">
                   Forgot?
                 </Link>
               </div>
@@ -90,7 +90,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 placeholder="••••••••"
               />
             </div>
@@ -99,13 +99,13 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-3 px-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Sign In
               </button>
               <p className="text-center text-sm text-zinc-500">
                 Don&apos;t have an account?{' '}
-                <Link href="/signup" className="text-emerald-500 hover:underline">
+                <Link href="/signup" className="text-blue-500 hover:underline">
                   Create Account
                 </Link>
               </p>

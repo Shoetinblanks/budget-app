@@ -134,28 +134,28 @@ export default function AccountPage() {
       <aside className="w-full md:w-64 space-y-2">
         <button 
           onClick={() => setActiveSection('profile')}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${activeSection === 'profile' ? 'bg-emerald-500 text-zinc-950 font-bold' : 'text-zinc-400 hover:bg-zinc-900'}`}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${activeSection === 'profile' ? 'bg-blue-500 text-zinc-950 font-bold' : 'text-zinc-400 hover:bg-zinc-900'}`}
         >
           <User className="w-5 h-5" />
           Profile
         </button>
         <button 
           onClick={() => setActiveSection('income')}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${activeSection === 'income' ? 'bg-emerald-500 text-zinc-950 font-bold' : 'text-zinc-400 hover:bg-zinc-900'}`}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${activeSection === 'income' ? 'bg-blue-500 text-zinc-950 font-bold' : 'text-zinc-400 hover:bg-zinc-900'}`}
         >
           <DollarSign className="w-5 h-5" />
           Income Sources
         </button>
         <button 
           onClick={() => setActiveSection('defaults')}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${activeSection === 'defaults' ? 'bg-emerald-500 text-zinc-950 font-bold' : 'text-zinc-400 hover:bg-zinc-900'}`}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${activeSection === 'defaults' ? 'bg-blue-500 text-zinc-950 font-bold' : 'text-zinc-400 hover:bg-zinc-900'}`}
         >
           <Target className="w-5 h-5" />
           System Defaults
         </button>
         <button 
           onClick={() => setActiveSection('security')}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${activeSection === 'security' ? 'bg-emerald-500 text-zinc-950 font-bold' : 'text-zinc-400 hover:bg-zinc-900'}`}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${activeSection === 'security' ? 'bg-blue-500 text-zinc-950 font-bold' : 'text-zinc-400 hover:bg-zinc-900'}`}
         >
           <Shield className="w-5 h-5" />
           Security
@@ -165,7 +165,7 @@ export default function AccountPage() {
       {/* Main Content */}
       <main className="flex-1 bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-3xl p-8 shadow-2xl min-h-[500px]">
         {message && (
-          <div className={`mb-6 p-4 rounded-xl border ${message.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400' : 'bg-red-500/10 border-red-500/50 text-red-400'}`}>
+          <div className={`mb-6 p-4 rounded-xl border ${message.type === 'success' ? 'bg-blue-500/10 border-blue-500/50 text-blue-400' : 'bg-red-500/10 border-red-500/50 text-red-400'}`}>
             {message.text}
           </div>
         )}
@@ -179,13 +179,13 @@ export default function AccountPage() {
                 value={friendlyName}
                 onChange={e => setFriendlyName(e.target.value)}
                 placeholder="e.g. John's Budget"
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <button 
               onClick={handleSaveProfile}
               disabled={saving}
-              className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold py-3 px-6 rounded-xl transition-colors flex items-center gap-2"
+              className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-3 px-6 rounded-xl transition-colors flex items-center gap-2"
             >
               <Save className="w-5 h-5" />
               Save Profile
@@ -225,7 +225,7 @@ export default function AccountPage() {
                         setIncomeSources(newS)
                       }}
                       placeholder="Employer Name"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
@@ -237,7 +237,7 @@ export default function AccountPage() {
                         newS[index].pay_frequency = e.target.value
                         setIncomeSources(newS)
                       }}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="weekly">Weekly</option>
                       <option value="bi-weekly">Bi-Weekly</option>
@@ -269,7 +269,7 @@ export default function AccountPage() {
                         setIncomeSources(newS)
                       }}
                       placeholder="e.g. 3000"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
@@ -284,7 +284,7 @@ export default function AccountPage() {
                         setIncomeSources(newS)
                       }}
                       placeholder="e.g. 2500"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
@@ -299,7 +299,7 @@ export default function AccountPage() {
                         setIncomeSources(newS)
                       }}
                       placeholder="e.g. 400"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
@@ -314,7 +314,7 @@ export default function AccountPage() {
                         setIncomeSources(newS)
                       }}
                       placeholder="e.g. 100"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -325,7 +325,7 @@ export default function AccountPage() {
               <button 
                 onClick={handleSaveIncomes}
                 disabled={saving}
-                className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold py-3 px-6 rounded-xl transition-colors flex items-center gap-2"
+                className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-3 px-6 rounded-xl transition-colors flex items-center gap-2"
               >
                 <Save className="w-5 h-5" />
                 Save Income Sources
@@ -343,14 +343,14 @@ export default function AccountPage() {
                 type="number"
                 value={roundUpTarget}
                 onChange={e => setRoundUpTarget(Number(e.target.value))}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <p className="mt-2 text-sm text-zinc-500">How would you like your direct deposits rounded up?</p>
             </div>
             <button 
               onClick={handleSaveProfile}
               disabled={saving}
-              className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold py-3 px-6 rounded-xl transition-colors flex items-center gap-2"
+              className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-3 px-6 rounded-xl transition-colors flex items-center gap-2"
             >
               <Save className="w-5 h-5" />
               Save Defaults
@@ -368,7 +368,7 @@ export default function AccountPage() {
                   value={newEmail}
                   onChange={e => setNewEmail(e.target.value)}
                   placeholder="Leave blank to keep current"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -378,14 +378,14 @@ export default function AccountPage() {
                   value={newPassword}
                   onChange={e => setNewPassword(e.target.value)}
                   placeholder="Leave blank to keep current"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
             <button 
               onClick={handleUpdateSecurity}
               disabled={saving}
-              className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold py-3 px-6 rounded-xl transition-colors flex items-center gap-2"
+              className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-3 px-6 rounded-xl transition-colors flex items-center gap-2"
             >
               <Shield className="w-5 h-5" />
               Update Credentials

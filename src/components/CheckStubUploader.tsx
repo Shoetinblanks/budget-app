@@ -74,7 +74,7 @@ export default function CheckStubUploader({ onScanComplete }: { onScanComplete: 
   };
 
   return (
-    <div className="bg-zinc-950 border border-zinc-800 border-dashed rounded-2xl p-6 relative group hover:border-emerald-500/50 transition-colors">
+    <div className="bg-zinc-950 border border-zinc-800 border-dashed rounded-2xl p-6 relative group hover:border-blue-500/50 transition-colors">
       <input 
         type="file" 
         accept="image/*,.pdf" 
@@ -86,14 +86,14 @@ export default function CheckStubUploader({ onScanComplete }: { onScanComplete: 
       <div className="flex flex-col items-center justify-center text-center gap-3">
         {loading ? (
           <>
-            <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
+            <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
             <p className="text-zinc-300 font-bold text-sm">Scanning Document... {progress}%</p>
             <p className="text-zinc-500 text-xs">Our AI is reading your paystub.</p>
           </>
         ) : (
           <>
             <div className="p-3 bg-zinc-900 rounded-full group-hover:scale-110 transition-transform">
-              <FileText className="w-6 h-6 text-emerald-500" />
+              <FileText className="w-6 h-6 text-blue-500" />
             </div>
             <div>
               <p className="text-zinc-300 font-bold text-sm">Auto-fill via OCR</p>

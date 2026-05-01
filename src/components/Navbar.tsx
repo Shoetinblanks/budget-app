@@ -50,7 +50,7 @@ export default function Navbar() {
         <div className="flex justify-between h-16 items-center">
           {/* Left: Logo */}
           <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
               <span className="text-zinc-950 font-bold text-xl">S</span>
             </div>
             <span className="text-white font-bold tracking-tight text-lg hidden sm:block">ShoeBudgeting</span>
@@ -75,7 +75,7 @@ export default function Navbar() {
                     onClick={() => setIsGearOpen(false)}
                     className="flex items-center gap-3 px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
                   >
-                    <User className="w-4 h-4 text-emerald-500" />
+                    <User className="w-4 h-4 text-blue-500" />
                     Profile
                   </Link>
                   <Link 
@@ -83,7 +83,7 @@ export default function Navbar() {
                     onClick={() => setIsGearOpen(false)}
                     className="flex items-center gap-3 px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
                   >
-                    <Settings className="w-4 h-4 text-emerald-500" />
+                    <Settings className="w-4 h-4 text-blue-500" />
                     Settings
                   </Link>
                   <hr className="border-zinc-800 my-1" />
@@ -115,7 +115,7 @@ export default function Navbar() {
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="flex items-center gap-3 p-3 text-zinc-300 hover:bg-zinc-800 rounded-xl"
                 >
-                  <LayoutDashboard className="w-5 h-5 text-emerald-500" />
+                  <LayoutDashboard className="w-5 h-5 text-blue-500" />
                   Dashboard
                 </Link>
                 <Link 
@@ -123,7 +123,7 @@ export default function Navbar() {
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="flex items-center gap-3 p-3 text-zinc-300 hover:bg-zinc-800 rounded-xl"
                 >
-                  <User className="w-5 h-5 text-emerald-500" />
+                  <User className="w-5 h-5 text-blue-500" />
                   Profile & Settings
                 </Link>
                 <button 

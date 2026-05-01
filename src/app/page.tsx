@@ -364,18 +364,18 @@ export default function Dashboard() {
   const emergencyGoal = totalFixedMonthly * emergencyMonths;
 
   const netPayVsExpensesData = [
-    { name: 'Income', value: viewNetPay, fill: '#10b981' },
+    { name: 'Income', value: viewNetPay, fill: '#3b82f6' },
     { name: 'Expenses', value: viewExpenses, fill: '#f43f5e' }
   ];
 
   const payBreakdownData = [
-    { name: 'Net Pay', value: viewNetPay, fill: '#10b981' },
+    { name: 'Net Pay', value: viewNetPay, fill: '#3b82f6' },
     { name: 'Taxes', value: viewTaxes, fill: '#f59e0b' },
     { name: 'Deductions', value: viewDeductions, fill: '#6366f1' }
   ];
 
   const fixedVsVariableData = [
-    { name: 'Fixed', value: totalFixedMonthly, color: '#10b981' },
+    { name: 'Fixed', value: totalFixedMonthly, color: '#3b82f6' },
     { name: 'Variable', value: totalVariableMonthly, color: '#f97316' }
   ];
 
@@ -389,7 +389,7 @@ export default function Dashboard() {
     value: categoryDataMap[key]
   }));
 
-  const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+  const COLORS = ['#3b82f6', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
 
   const tabs = [
     { id: 'transactions', label: 'Transactions', icon: ArrowUpDown },
@@ -404,7 +404,7 @@ export default function Dashboard() {
         <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold text-white tracking-tight">
-              Welcome back, <span className="text-emerald-500">{profile?.friendly_name || user?.email}</span>
+              Welcome back, <span className="text-blue-500">{profile?.friendly_name || user?.email}</span>
             </h1>
             <p className="text-zinc-500 mt-2">
               Managing <span className="text-zinc-300">{incomeSources.length}</span> income sources
@@ -430,7 +430,7 @@ export default function Dashboard() {
                   setFormState({ name: '', monthly_amount: 0, bi_weekly_amount: 0, category: 'General', fixed: true, account_code: accounts[0]?.account_code || '', due_date: '' })
                   setIsModalOpen(true)
                 }}
-                className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20"
+                className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20"
               >
                 <Plus className="w-5 h-5" />
                 Add Expense
@@ -447,7 +447,7 @@ export default function Dashboard() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === tab.id ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
             >
-              <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? 'text-emerald-500' : ''}`} />
+              <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? 'text-blue-500' : ''}`} />
               {tab.label}
             </button>
           ))}
@@ -462,7 +462,7 @@ export default function Dashboard() {
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
                   <input 
                     placeholder="Search transactions..."
-                    className="bg-zinc-950 border border-zinc-800 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 w-64"
+                    className="bg-zinc-950 border border-zinc-800 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
                   />
                 </div>
                 <div className="flex gap-2">
@@ -490,7 +490,7 @@ export default function Dashboard() {
                           {t.description}
                           <button 
                             onClick={() => handleSaveRule(t.description, t.category)}
-                            className="ml-2 opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 rounded text-[10px] text-zinc-500 hover:text-emerald-400 transition-all border border-zinc-700"
+                            className="ml-2 opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 rounded text-[10px] text-zinc-500 hover:text-blue-400 transition-all border border-zinc-700"
                             title="Save as Category Rule"
                           >
                             Save Rule
@@ -501,7 +501,7 @@ export default function Dashboard() {
                             {t.category}
                           </span>
                         </td>
-                        <td className={`px-4 py-5 text-right font-mono ${t.amount < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                        <td className={`px-4 py-5 text-right font-mono ${t.amount < 0 ? 'text-red-400' : 'text-blue-400'}`}>
                           {t.amount < 0 ? '-' : '+'}${Math.abs(t.amount).toFixed(2)}
                         </td>
                       </tr>
@@ -545,13 +545,13 @@ export default function Dashboard() {
                         </td>
                         <td className="px-4 py-5 text-zinc-400">
                           {expense.fixed ? (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                            <CheckCircle2 className="w-4 h-4 text-blue-500" />
                           ) : (
                             <Circle className="w-4 h-4 text-zinc-700" />
                           )}
                         </td>
                         <td className="px-4 py-5 text-right text-zinc-300">${Number(expense.monthly_amount).toFixed(2)}</td>
-                        <td className="px-4 py-5 text-right text-emerald-500 font-mono">${Number(expense.bi_weekly_amount).toFixed(2)}</td>
+                        <td className="px-4 py-5 text-right text-blue-500 font-mono">${Number(expense.bi_weekly_amount).toFixed(2)}</td>
                         <td className="px-4 py-5 text-center text-zinc-500 text-xs font-mono">{expense.account_code}</td>
                         <td className="px-4 py-5 text-right">
                           <div className="flex justify-end gap-2">
@@ -590,7 +590,7 @@ export default function Dashboard() {
                   <p className="text-3xl font-bold text-white font-mono">${totalMonthly.toFixed(2)}</p>
                 </div>
                 <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
-                  <p className="text-emerald-500/70 text-xs uppercase font-bold tracking-widest mb-1">Fixed Bills</p>
+                  <p className="text-blue-500/70 text-xs uppercase font-bold tracking-widest mb-1">Fixed Bills</p>
                   <p className="text-3xl font-bold text-white font-mono">
                     ${totalFixedMonthly.toFixed(2)}
                   </p>
@@ -624,7 +624,7 @@ export default function Dashboard() {
                 <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="text-lg font-bold text-white capitalize">{totalsView} Cash Flow</h3>
-                    <div className={`px-3 py-1 rounded-full text-xs font-bold border ${netCashFlow >= 0 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+                    <div className={`px-3 py-1 rounded-full text-xs font-bold border ${netCashFlow >= 0 ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
                       {netCashFlow >= 0 ? '+' : '-'}${Math.abs(netCashFlow).toFixed(2)} Leftover
                     </div>
                   </div>
@@ -669,7 +669,7 @@ export default function Dashboard() {
                     <div className="mb-8">
                       <div className="flex justify-between text-xs text-zinc-400 font-bold mb-4">
                         <span>1 Month</span>
-                        <span className="text-emerald-500 text-lg">{emergencyMonths} Months</span>
+                        <span className="text-blue-500 text-lg">{emergencyMonths} Months</span>
                         <span>12 Months</span>
                       </div>
                       <input 
@@ -678,7 +678,7 @@ export default function Dashboard() {
                         max="12" 
                         value={emergencyMonths} 
                         onChange={(e) => setEmergencyMonths(Number(e.target.value))}
-                        className="w-full h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                        className="w-full h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
                       />
                     </div>
                   </div>
@@ -753,7 +753,7 @@ export default function Dashboard() {
                   <span className="px-3 py-1 bg-zinc-800 rounded-full text-[10px] text-zinc-400 font-bold border border-zinc-700 uppercase tracking-wider">
                     {incomeSources.length} Sources
                   </span>
-                  <span className="px-3 py-1 bg-emerald-500/10 rounded-full text-[10px] text-emerald-500 font-bold border border-emerald-500/20 uppercase tracking-wider">
+                  <span className="px-3 py-1 bg-blue-500/10 rounded-full text-[10px] text-blue-500 font-bold border border-blue-500/20 uppercase tracking-wider">
                     Rounds to ${roundUpTarget}
                   </span>
                 </div>
@@ -783,7 +783,7 @@ export default function Dashboard() {
                             <span className="text-zinc-600 text-xs ml-2 font-normal font-mono">({acc.code})</span>
                           </td>
                           <td className="px-4 py-5 text-right font-mono text-zinc-400">${acc.required.toFixed(2)}</td>
-                          <td className="px-4 py-5 text-right font-bold text-emerald-400 font-mono text-lg">
+                          <td className="px-4 py-5 text-right font-bold text-blue-400 font-mono text-lg">
                             ${acc.directDeposit.toFixed(2)}
                           </td>
                         </tr>
@@ -795,7 +795,7 @@ export default function Dashboard() {
                       <tr className="border-t-2 border-zinc-800 text-white font-bold">
                         <td className="px-4 py-6 text-lg">Total Paycheck Need</td>
                         <td className="px-4 py-6 text-right text-lg font-mono text-zinc-300">${totalBiWeekly.toFixed(2)}</td>
-                        <td className="px-4 py-6 text-right text-2xl text-emerald-400 font-mono">
+                        <td className="px-4 py-6 text-right text-2xl text-blue-400 font-mono">
                           ${totalDirectDeposit.toFixed(2)}
                         </td>
                       </tr>
@@ -845,7 +845,7 @@ export default function Dashboard() {
                         setImportPreview(importPreview.map(t => ({ ...t, amount: t.amount * -1 })))
                       }
                     }}
-                    className="w-5 h-5 rounded border-zinc-800 bg-zinc-900 text-emerald-500 focus:ring-emerald-500"
+                    className="w-5 h-5 rounded border-zinc-800 bg-zinc-900 text-blue-500 focus:ring-blue-500"
                   />
                   <label htmlFor="flip-amounts" className="text-sm font-medium text-zinc-300 cursor-pointer">
                     Flip Amounts (+/-)
@@ -876,7 +876,7 @@ export default function Dashboard() {
                           <td className="px-4 py-3 font-mono">{t.transaction_date}</td>
                           <td className="px-4 py-3 truncate max-w-xs">{t.description}</td>
                           <td className="px-4 py-3">{t.category}</td>
-                          <td className={`px-4 py-3 text-right font-mono ${t.amount < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                          <td className={`px-4 py-3 text-right font-mono ${t.amount < 0 ? 'text-red-400' : 'text-blue-400'}`}>
                             ${t.amount.toFixed(2)}
                           </td>
                         </tr>
@@ -888,7 +888,7 @@ export default function Dashboard() {
                   <button 
                     disabled={importLoading}
                     onClick={handleImportTransactions}
-                    className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-zinc-950 font-bold py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+                    className="w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-zinc-950 font-bold py-4 rounded-2xl transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
                   >
                     {importLoading ? 'Importing...' : `Confirm Import (${importPreview.length} Transactions)`}
                   </button>
@@ -919,7 +919,7 @@ export default function Dashboard() {
                     required
                     value={formState.name}
                     onChange={e => setFormState({ ...formState, name: e.target.value })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="e.g. Rent, Internet, Car Payment"
                   />
                 </div>
@@ -934,7 +934,7 @@ export default function Dashboard() {
                       const val = Number(e.target.value)
                       setFormState({ ...formState, monthly_amount: val, bi_weekly_amount: Number((val / 2).toFixed(2)) })
                     }}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -945,7 +945,7 @@ export default function Dashboard() {
                     step="0.01"
                     value={formState.bi_weekly_amount}
                     onChange={e => setFormState({ ...formState, bi_weekly_amount: Number(e.target.value) })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -954,7 +954,7 @@ export default function Dashboard() {
                   <select 
                     value={formState.category}
                     onChange={e => setFormState({ ...formState, category: e.target.value })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="Housing">Housing</option>
                     <option value="Utilities">Utilities</option>
@@ -970,7 +970,7 @@ export default function Dashboard() {
                   <select 
                     value={formState.account_code}
                     onChange={e => setFormState({ ...formState, account_code: e.target.value })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                   >
                     {accounts.map(acc => (
                       <option key={acc.account_code} value={acc.account_code}>{acc.name} ({acc.account_code})</option>
@@ -985,7 +985,7 @@ export default function Dashboard() {
                   id="fixed"
                   checked={formState.fixed}
                   onChange={e => setFormState({ ...formState, fixed: e.target.checked })}
-                  className="w-5 h-5 rounded border-zinc-800 bg-zinc-900 text-emerald-500 focus:ring-emerald-500"
+                  className="w-5 h-5 rounded border-zinc-800 bg-zinc-900 text-blue-500 focus:ring-blue-500"
                 />
                 <label htmlFor="fixed" className="text-sm font-medium text-zinc-300 cursor-pointer">
                   Mark as Fixed Bill
@@ -995,7 +995,7 @@ export default function Dashboard() {
 
               <button 
                 type="submit"
-                className="w-full bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+                className="w-full bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-4 rounded-2xl transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
               >
                 <Save className="w-5 h-5" />
                 {editingExpense ? 'Update Expense' : 'Save Expense'}
