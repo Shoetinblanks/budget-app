@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Receipt, BarChart3, ShieldCheck, Wallet, Plus, Trash2, Edit2, X, Save, CheckCircle2, Circle } from 'lucide-react'
+import { Receipt, BarChart3, Wallet, Plus, Trash2, Edit2, X, Save, CheckCircle2, Circle, Upload, Search, Filter, ArrowUpDown } from 'lucide-react'
+import Papa from 'papaparse'
 import { User } from '@supabase/supabase-js'
 
 interface Profile {
@@ -27,22 +28,42 @@ interface Expense {
   due_date: string
 }
 
+interface Transaction {
+  id?: string
+  transaction_date: string
+  post_date?: string
+  description: string
+  category: string
+  subcategory?: string
+  type?: string
+  amount: number
+  memo?: string
+}
+
 interface IncomeSource {
   employer_name: string
   pay_frequency: string
 }
 
+interface CategoryRule {
+  merchant_pattern: string
+  category: string
+}
+
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState('expenses')
+  const [activeTab, setActiveTab] = useState('transactions')
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [accounts, setAccounts] = useState<Account[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
+  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([])
+  const [categoryRules, setCategoryRules] = useState<CategoryRule[]>([])
   const [loading, setLoading] = useState(true)
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [formState, setFormState] = useState<Expense>({
     name: '',
@@ -53,6 +74,11 @@ export default function Dashboard() {
     account_code: '',
     due_date: ''
   })
+
+  // Import State
+  const [importPreview, setImportPreview] = useState<Transaction[]>([])
+  const [importLoading, setImportLoading] = useState(false)
+  const [flipAmounts, setFlipAmounts] = useState(false)
 
   const supabase = createClient()
   const router = useRouter()
@@ -66,19 +92,22 @@ export default function Dashboard() {
       }
       setUser(user)
 
-      const [pRes, aRes, eRes, iRes] = await Promise.all([
+      const [pRes, aRes, eRes, iRes, tRes, rRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
         supabase.from('accounts').select('*').eq('user_id', user.id),
         supabase.from('expenses').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-        supabase.from('income_sources').select('*').eq('user_id', user.id)
+        supabase.from('income_sources').select('*').eq('user_id', user.id),
+        supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false }).limit(50),
+        supabase.from('category_rules').select('*').eq('user_id', user.id)
       ])
 
       setProfile(pRes.data)
       setAccounts(aRes.data || [])
       setExpenses(eRes.data || [])
       setIncomeSources(iRes.data || [])
+      setTransactions(tRes.data || [])
+      setCategoryRules(rRes.data || [])
       
-      // Default account code for form
       if (aRes.data?.[0]) {
         setFormState(prev => ({ ...prev, account_code: aRes.data[0].account_code }))
       }
@@ -94,11 +123,7 @@ export default function Dashboard() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const expenseData = {
-      ...formState,
-      user_id: user.id
-    }
-
+    const expenseData = { ...formState, user_id: user.id }
     let error
     if (editingExpense?.id) {
       const { error: err } = await supabase.from('expenses').update(expenseData).eq('id', editingExpense.id)
@@ -111,25 +136,139 @@ export default function Dashboard() {
     if (!error) {
       setIsModalOpen(false)
       setEditingExpense(null)
-      setFormState({ name: '', monthly_amount: 0, bi_weekly_amount: 0, category: 'General', fixed: true, account_code: accounts[0]?.account_code || '', due_date: '' })
-      // Reload expenses
       const { data } = await supabase.from('expenses').select('*').eq('user_id', user.id).order('created_at', { ascending: false })
       setExpenses(data || [])
     }
   }
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setImportLoading(true)
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const mapped = mapCSVToTransactions(results.data as Record<string, string>[])
+        setImportPreview(mapped)
+        setImportLoading(false)
+      }
+    })
+  }
+
+  const mapCSVToTransactions = (data: Record<string, string>[]): Transaction[] => {
+    return data.map(row => {
+      let t: Transaction
+      
+      // Detection logic
+      if (row['Transaction Date'] && row['Post Date'] && row['Amount']) {
+        t = {
+          transaction_date: row['Transaction Date'],
+          post_date: row['Post Date'],
+          description: row['Description'],
+          category: row['Category'] || 'General',
+          type: row['Type'],
+          amount: parseFloat(row['Amount']) * (flipAmounts ? -1 : 1),
+          memo: row['Memo']
+        }
+      } else if (row['Date'] && row['Description'] && row['Amount']) {
+        t = {
+          transaction_date: row['Date'],
+          description: row['Description'],
+          category: row['Category'] || 'General',
+          amount: parseFloat(row['Amount']) * (flipAmounts ? -1 : 1),
+          memo: row['Location']
+        }
+      } else {
+        t = {
+          transaction_date: row['Date'] || row['Transaction Date'] || '',
+          description: row['Description'] || '',
+          category: row['Category'] || 'General',
+          amount: parseFloat(row['Amount']?.toString().replace(/[$,]/g, '') || '0') * (flipAmounts ? -1 : 1)
+        }
+      }
+
+      // Apply Smart Categorization
+      const rule = categoryRules.find(r => 
+        t.description.toLowerCase().includes(r.merchant_pattern.toLowerCase())
+      )
+      if (rule) {
+        t.category = rule.category
+      }
+
+      return t
+    })
+  }
+
+  const handleImportTransactions = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    setImportLoading(true)
+    
+    // Deduplication logic: Check for existing transactions in the last 30 days
+    const { data: existing } = await supabase
+      .from('transactions')
+      .select('transaction_date, amount, description')
+      .eq('user_id', user.id)
+      .gte('transaction_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+
+    const toInsert = importPreview.filter(t => {
+      const isDuplicate = existing?.some(e => 
+        new Date(e.transaction_date).toLocaleDateString() === new Date(t.transaction_date).toLocaleDateString() &&
+        Math.abs(e.amount - t.amount) < 0.01 &&
+        e.description.toLowerCase() === t.description.toLowerCase()
+      )
+      return !isDuplicate
+    }).map(t => ({ ...t, user_id: user.id }))
+    
+    if (toInsert.length > 0) {
+      const { error } = await supabase.from('transactions').insert(toInsert)
+      if (error) {
+        alert('Error importing transactions: ' + error.message)
+      } else {
+        alert(`Successfully imported ${toInsert.length} new transactions. (${importPreview.length - toInsert.length} duplicates skipped)`)
+      }
+    } else {
+      alert('No new transactions to import. All items in the file were identified as duplicates.')
+    }
+    
+    setIsImportModalOpen(false)
+    setImportPreview([])
+    const { data } = await supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false }).limit(50)
+    setTransactions(data || [])
+    setImportLoading(false)
+  }
+
+
   const handleDeleteExpense = async (id: string) => {
     if (!confirm('Are you sure?')) return
     const { error } = await supabase.from('expenses').delete().eq('id', id)
-    if (!error) {
-      setExpenses(expenses.filter(e => e.id !== id))
-    }
+    if (!error) setExpenses(expenses.filter(e => e.id !== id))
   }
 
   const openEditModal = (expense: Expense) => {
     setEditingExpense(expense)
     setFormState(expense)
     setIsModalOpen(true)
+  }
+
+  const handleSaveRule = async (merchantPattern: string, category: string) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { error } = await supabase.from('category_rules').insert({
+      user_id: user.id,
+      merchant_pattern: merchantPattern,
+      category: category
+    })
+
+    if (!error) {
+      const { data } = await supabase.from('category_rules').select('*').eq('user_id', user.id)
+      setCategoryRules(data || [])
+      alert(`Rule saved: "${merchantPattern}" will now be categorized as ${category}`)
+    }
   }
 
   if (loading) return <div className="p-8 text-zinc-500 animate-pulse">Loading dashboard...</div>
@@ -147,13 +286,12 @@ export default function Dashboard() {
   const totalMonthly = expenses.reduce((sum, e) => sum + (Number(e.monthly_amount) || 0), 0)
   const fixedExpenses = expenses.filter(e => e.fixed)
   const variableExpenses = expenses.filter(e => !e.fixed)
-  
   const totalDirectDeposit = accountMath.reduce((sum, acc) => sum + acc.directDeposit, 0)
 
   const tabs = [
+    { id: 'transactions', label: 'Transactions', icon: ArrowUpDown },
     { id: 'expenses', label: 'Expenses', icon: Receipt },
     { id: 'summary', label: 'Summary Totals', icon: BarChart3 },
-    { id: 'emergency', label: 'Emergency Fund', icon: ShieldCheck },
     { id: 'direct-deposit', label: 'Direct Deposit', icon: Wallet },
   ]
 
@@ -169,19 +307,30 @@ export default function Dashboard() {
               Managing <span className="text-zinc-300">{incomeSources.length}</span> income sources
             </p>
           </div>
-          {activeTab === 'expenses' && (
-            <button 
-              onClick={() => {
-                setEditingExpense(null)
-                setFormState({ name: '', monthly_amount: 0, bi_weekly_amount: 0, category: 'General', fixed: true, account_code: accounts[0]?.account_code || '', due_date: '' })
-                setIsModalOpen(true)
-              }}
-              className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20"
-            >
-              <Plus className="w-5 h-5" />
-              Add Expense
-            </button>
-          )}
+          <div className="flex gap-3">
+            {activeTab === 'transactions' && (
+              <button 
+                onClick={() => setIsImportModalOpen(true)}
+                className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 border border-zinc-700"
+              >
+                <Upload className="w-5 h-5" />
+                Import CSV
+              </button>
+            )}
+            {activeTab === 'expenses' && (
+              <button 
+                onClick={() => {
+                  setEditingExpense(null)
+                  setFormState({ name: '', monthly_amount: 0, bi_weekly_amount: 0, category: 'General', fixed: true, account_code: accounts[0]?.account_code || '', due_date: '' })
+                  setIsModalOpen(true)
+                }}
+                className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20"
+              >
+                <Plus className="w-5 h-5" />
+                Add Expense
+              </button>
+            )}
+          </div>
         </header>
 
         {/* Tab Navigation */}
@@ -200,6 +349,70 @@ export default function Dashboard() {
 
         {/* Tab Content */}
         <main className="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-3xl p-6 md:p-8 shadow-2xl min-h-[400px]">
+          {activeTab === 'transactions' && (
+            <div className="animate-in fade-in duration-500">
+              <div className="flex justify-between items-center mb-6">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                  <input 
+                    placeholder="Search transactions..."
+                    className="bg-zinc-950 border border-zinc-800 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 w-64"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-500 transition-colors">
+                    <Filter className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
+                      <th className="px-4 py-4">Date</th>
+                      <th className="px-4 py-4">Description</th>
+                      <th className="px-4 py-4">Category</th>
+                      <th className="px-4 py-4 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/50">
+                    {transactions.map((t) => (
+                      <tr key={t.id} className="group hover:bg-white/[0.02] transition-colors">
+                        <td className="px-4 py-5 text-zinc-400 font-mono text-xs">{new Date(t.transaction_date).toLocaleDateString()}</td>
+                        <td className="px-4 py-5 text-zinc-200">
+                          {t.description}
+                          <button 
+                            onClick={() => handleSaveRule(t.description, t.category)}
+                            className="ml-2 opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 rounded text-[10px] text-zinc-500 hover:text-emerald-400 transition-all border border-zinc-700"
+                            title="Save as Category Rule"
+                          >
+                            Save Rule
+                          </button>
+                        </td>
+                        <td className="px-4 py-5">
+                          <span className="px-2 py-1 bg-zinc-800 rounded-md text-[10px] uppercase tracking-tighter text-zinc-400">
+                            {t.category}
+                          </span>
+                        </td>
+                        <td className={`px-4 py-5 text-right font-mono ${t.amount < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                          {t.amount < 0 ? '-' : '+'}${Math.abs(t.amount).toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                    {transactions.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-20 text-center text-zinc-600">
+                          No transactions found. Click &quot;Import CSV&quot; to upload your statement.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'expenses' && (
             <div className="animate-in fade-in duration-500">
               <div className="overflow-x-auto">
@@ -288,14 +501,6 @@ export default function Dashboard() {
             </div>
           )}
 
-          {activeTab === 'emergency' && (
-            <div className="text-center py-20">
-              <ShieldCheck className="w-12 h-12 text-zinc-700 mx-auto mb-4" />
-              <h3 className="text-zinc-300 font-medium text-lg">Emergency Fund</h3>
-              <p className="text-zinc-500 text-sm mt-1">Coming soon in Phase 5.</p>
-            </div>
-          )}
-
           {activeTab === 'direct-deposit' && (
             <div className="animate-in fade-in duration-500">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
@@ -359,7 +564,98 @@ export default function Dashboard() {
         </main>
       </div>
 
-      {/* Expense Modal */}
+      {/* Import Modal */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-zinc-950/80 backdrop-blur-sm" onClick={() => setIsImportModalOpen(false)} />
+          <div className="relative bg-zinc-900 border border-zinc-800 w-full max-w-4xl rounded-3xl p-8 shadow-2xl animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center mb-8">
+              <div>
+                <h2 className="text-2xl font-bold text-white">Import Transactions</h2>
+                <p className="text-zinc-500 text-sm">Upload a Chase, Caesars, or generic CSV statement.</p>
+              </div>
+              <button onClick={() => setIsImportModalOpen(false)} className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="flex flex-col md:flex-row gap-6 mb-8">
+              <label className="flex-1 flex flex-col items-center justify-center h-32 border-2 border-zinc-800 border-dashed rounded-2xl cursor-pointer bg-zinc-950 hover:bg-zinc-900 transition-all">
+                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                  <Upload className="w-8 h-8 text-zinc-500 mb-2" />
+                  <p className="text-sm text-zinc-500">Click to upload or drag and drop</p>
+                </div>
+                <input type="file" className="hidden" accept=".csv" onChange={handleFileUpload} />
+              </label>
+
+              <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 flex flex-col justify-center gap-2">
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="checkbox"
+                    id="flip-amounts"
+                    checked={flipAmounts}
+                    onChange={e => {
+                      setFlipAmounts(e.target.checked)
+                      // Re-parse if preview exists
+                      if (importPreview.length > 0) {
+                        setImportPreview(importPreview.map(t => ({ ...t, amount: t.amount * -1 })))
+                      }
+                    }}
+                    className="w-5 h-5 rounded border-zinc-800 bg-zinc-900 text-emerald-500 focus:ring-emerald-500"
+                  />
+                  <label htmlFor="flip-amounts" className="text-sm font-medium text-zinc-300 cursor-pointer">
+                    Flip Amounts (+/-)
+                  </label>
+                </div>
+                <p className="text-[10px] text-zinc-500 max-w-[200px]">
+                  Enable this if charges are imported as positive numbers.
+                </p>
+              </div>
+            </div>
+
+            {importPreview.length > 0 && (
+              <div className="flex-1 overflow-hidden flex flex-col">
+                <h3 className="text-lg font-bold text-white mb-4">Preview ({importPreview.length} items)</h3>
+                <div className="flex-1 overflow-auto border border-zinc-800 rounded-xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="sticky top-0 bg-zinc-900 border-b border-zinc-800">
+                      <tr className="text-zinc-500 uppercase tracking-wider">
+                        <th className="px-4 py-3">Date</th>
+                        <th className="px-4 py-3">Description</th>
+                        <th className="px-4 py-3">Category</th>
+                        <th className="px-4 py-3 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/50">
+                      {importPreview.map((t, idx) => (
+                        <tr key={idx} className="text-zinc-400">
+                          <td className="px-4 py-3 font-mono">{t.transaction_date}</td>
+                          <td className="px-4 py-3 truncate max-w-xs">{t.description}</td>
+                          <td className="px-4 py-3">{t.category}</td>
+                          <td className={`px-4 py-3 text-right font-mono ${t.amount < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                            ${t.amount.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="pt-8 mt-auto">
+                  <button 
+                    disabled={importLoading}
+                    onClick={handleImportTransactions}
+                    className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-zinc-950 font-bold py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+                  >
+                    {importLoading ? 'Importing...' : `Confirm Import (${importPreview.length} Transactions)`}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Expense Modal (Unchanged) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-zinc-950/80 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
