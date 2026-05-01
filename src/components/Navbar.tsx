@@ -53,7 +53,7 @@ export default function Navbar() {
             <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
               <span className="text-zinc-950 font-bold text-xl">S</span>
             </div>
-            <span className="text-white font-bold tracking-tight text-lg hidden sm:block">Shoetinblanks Finance</span>
+            <span className="text-white font-bold tracking-tight text-lg hidden sm:block">ShoeBudgeting</span>
           </Link>
 
           {/* Right: Desktop Icons */}

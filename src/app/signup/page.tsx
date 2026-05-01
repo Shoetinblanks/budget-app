@@ -40,7 +40,7 @@ export default function SignupPage() {
         <div className="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-3xl p-8 shadow-2xl">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-white mb-2">Create Account</h1>
-            <p className="text-zinc-400">Join Shoetinblanks Finance</p>
+            <p className="text-zinc-400">Join ShoeBudgeting</p>
           </div>
 
           {error && (

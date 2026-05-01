@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import { Receipt, BarChart3, Wallet, Plus, Trash2, Edit2, X, Save, CheckCircle2, Circle, Upload, Search, Filter, ArrowUpDown } from 'lucide-react'
 import Papa from 'papaparse'
 import { User } from '@supabase/supabase-js'
+import PlaidLinkButton from '@/components/PlaidLinkButton'
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 interface Profile {
   friendly_name?: string
@@ -43,6 +45,10 @@ interface Transaction {
 interface IncomeSource {
   employer_name: string
   pay_frequency: string
+  net_amount?: number
+  gross_amount?: number
+  taxes?: number
+  deductions?: number
 }
 
 interface CategoryRule {
@@ -59,7 +65,11 @@ export default function Dashboard() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([])
   const [categoryRules, setCategoryRules] = useState<CategoryRule[]>([])
+  // We fetch plaidItems to ensure they exist, but don't strictly need to render them yet in this view
+  // const [plaidItems, setPlaidItems] = useState<PlaidItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [emergencyMonths, setEmergencyMonths] = useState<number>(3)
+  const [totalsView, setTotalsView] = useState<'bi-weekly' | 'monthly' | 'yearly'>('monthly')
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -98,7 +108,8 @@ export default function Dashboard() {
         supabase.from('expenses').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
         supabase.from('income_sources').select('*').eq('user_id', user.id),
         supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false }).limit(50),
-        supabase.from('category_rules').select('*').eq('user_id', user.id)
+        supabase.from('category_rules').select('*').eq('user_id', user.id),
+        supabase.from('plaid_items').select('*').eq('user_id', user.id)
       ])
 
       setProfile(pRes.data)
@@ -107,6 +118,7 @@ export default function Dashboard() {
       setIncomeSources(iRes.data || [])
       setTransactions(tRes.data || [])
       setCategoryRules(rRes.data || [])
+      // setPlaidItems(plaidRes.data || [])
       
       if (aRes.data?.[0]) {
         setFormState(prev => ({ ...prev, account_code: aRes.data[0].account_code }))
@@ -117,6 +129,14 @@ export default function Dashboard() {
 
     loadDashboardData()
   }, [supabase, router])
+
+  const handlePlaidSuccess = async () => {
+    // const { data: { user } } = await supabase.auth.getUser()
+    // if (!user) return
+    // const { data } = await supabase.from('plaid_items').select('*').eq('user_id', user.id)
+    // setPlaidItems(data || [])
+    alert('Bank account successfully linked!')
+  }
 
   const handleSaveExpense = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -288,6 +308,89 @@ export default function Dashboard() {
   const variableExpenses = expenses.filter(e => !e.fixed)
   const totalDirectDeposit = accountMath.reduce((sum, acc) => sum + acc.directDeposit, 0)
 
+  // Analytics Math
+  const totalNetPayMonthly = incomeSources.reduce((sum, income) => {
+    let multiplier = 1;
+    if (income.pay_frequency === 'weekly') multiplier = 4.33;
+    if (income.pay_frequency === 'bi-weekly') multiplier = 2.16;
+    if (income.pay_frequency === '1st/15th') multiplier = 2;
+    if (income.pay_frequency === 'monthly') multiplier = 1;
+    return sum + (Number(income.net_amount || 0) * multiplier);
+  }, 0);
+
+  const totalGrossMonthly = incomeSources.reduce((sum, income) => {
+    let multiplier = 1;
+    if (income.pay_frequency === 'weekly') multiplier = 4.33;
+    if (income.pay_frequency === 'bi-weekly') multiplier = 2.16;
+    if (income.pay_frequency === '1st/15th') multiplier = 2;
+    if (income.pay_frequency === 'monthly') multiplier = 1;
+    return sum + (Number(income.gross_amount || 0) * multiplier);
+  }, 0);
+
+  const totalTaxesMonthly = incomeSources.reduce((sum, income) => {
+    let multiplier = 1;
+    if (income.pay_frequency === 'weekly') multiplier = 4.33;
+    if (income.pay_frequency === 'bi-weekly') multiplier = 2.16;
+    if (income.pay_frequency === '1st/15th') multiplier = 2;
+    if (income.pay_frequency === 'monthly') multiplier = 1;
+    return sum + (Number(income.taxes || 0) * multiplier);
+  }, 0);
+
+  const totalDeductionsMonthly = incomeSources.reduce((sum, income) => {
+    let multiplier = 1;
+    if (income.pay_frequency === 'weekly') multiplier = 4.33;
+    if (income.pay_frequency === 'bi-weekly') multiplier = 2.16;
+    if (income.pay_frequency === '1st/15th') multiplier = 2;
+    if (income.pay_frequency === 'monthly') multiplier = 1;
+    return sum + (Number(income.deductions || 0) * multiplier);
+  }, 0);
+
+  const totalFixedMonthly = fixedExpenses.reduce((sum, e) => sum + Number(e.monthly_amount), 0);
+  const totalVariableMonthly = variableExpenses.reduce((sum, e) => sum + Number(e.monthly_amount), 0);
+  const totalExpensesMonthly = totalFixedMonthly + totalVariableMonthly;
+  
+  // Apply view multiplier
+  let viewMultiplier = 1;
+  if (totalsView === 'bi-weekly') viewMultiplier = 12 / 26;
+  if (totalsView === 'yearly') viewMultiplier = 12;
+
+  const viewNetPay = totalNetPayMonthly * viewMultiplier;
+  const viewExpenses = totalExpensesMonthly * viewMultiplier;
+  const viewGross = totalGrossMonthly * viewMultiplier;
+  const viewTaxes = totalTaxesMonthly * viewMultiplier;
+  const viewDeductions = totalDeductionsMonthly * viewMultiplier;
+  const netCashFlow = viewNetPay - viewExpenses;
+
+  const emergencyGoal = totalFixedMonthly * emergencyMonths;
+
+  const netPayVsExpensesData = [
+    { name: 'Income', value: viewNetPay, fill: '#10b981' },
+    { name: 'Expenses', value: viewExpenses, fill: '#f43f5e' }
+  ];
+
+  const payBreakdownData = [
+    { name: 'Net Pay', value: viewNetPay, fill: '#10b981' },
+    { name: 'Taxes', value: viewTaxes, fill: '#f59e0b' },
+    { name: 'Deductions', value: viewDeductions, fill: '#6366f1' }
+  ];
+
+  const fixedVsVariableData = [
+    { name: 'Fixed', value: totalFixedMonthly, color: '#10b981' },
+    { name: 'Variable', value: totalVariableMonthly, color: '#f97316' }
+  ];
+
+  const categoryDataMap = expenses.reduce((acc, exp) => {
+    acc[exp.category] = (acc[exp.category] || 0) + Number(exp.monthly_amount);
+    return acc;
+  }, {} as Record<string, number>);
+
+  const categoryData = Object.keys(categoryDataMap).map(key => ({
+    name: key,
+    value: categoryDataMap[key]
+  }));
+
+  const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+
   const tabs = [
     { id: 'transactions', label: 'Transactions', icon: ArrowUpDown },
     { id: 'expenses', label: 'Expenses', icon: Receipt },
@@ -309,13 +412,16 @@ export default function Dashboard() {
           </div>
           <div className="flex gap-3">
             {activeTab === 'transactions' && (
-              <button 
-                onClick={() => setIsImportModalOpen(true)}
-                className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 border border-zinc-700"
-              >
-                <Upload className="w-5 h-5" />
-                Import CSV
-              </button>
+              <>
+                <PlaidLinkButton onSuccess={handlePlaidSuccess} />
+                <button 
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 border border-zinc-700"
+                >
+                  <Upload className="w-5 h-5" />
+                  Import CSV
+                </button>
+              </>
             )}
             {activeTab === 'expenses' && (
               <button 
@@ -486,17 +592,155 @@ export default function Dashboard() {
                 <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
                   <p className="text-emerald-500/70 text-xs uppercase font-bold tracking-widest mb-1">Fixed Bills</p>
                   <p className="text-3xl font-bold text-white font-mono">
-                    ${fixedExpenses.reduce((sum, e) => sum + Number(e.bi_weekly_amount), 0).toFixed(2)}
+                    ${totalFixedMonthly.toFixed(2)}
                   </p>
                   <p className="text-[10px] text-zinc-500 mt-1">{fixedExpenses.length} items</p>
                 </div>
                 <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
                   <p className="text-orange-500/70 text-xs uppercase font-bold tracking-widest mb-1">Variable</p>
                   <p className="text-3xl font-bold text-white font-mono">
-                    ${variableExpenses.reduce((sum, e) => sum + Number(e.bi_weekly_amount), 0).toFixed(2)}
+                    ${totalVariableMonthly.toFixed(2)}
                   </p>
                   <p className="text-[10px] text-zinc-500 mt-1">{variableExpenses.length} items</p>
                 </div>
+              </div>
+
+              {/* Analytics Section */}
+              <div className="flex justify-between items-center bg-zinc-950/50 p-2 rounded-xl border border-zinc-800 w-fit">
+                {(['bi-weekly', 'monthly', 'yearly'] as const).map(view => (
+                  <button
+                    key={view}
+                    onClick={() => setTotalsView(view)}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold capitalize transition-all ${totalsView === view ? 'bg-zinc-800 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'}`}
+                  >
+                    {view}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                {/* Net Pay vs Expenses */}
+                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-lg font-bold text-white capitalize">{totalsView} Cash Flow</h3>
+                    <div className={`px-3 py-1 rounded-full text-xs font-bold border ${netCashFlow >= 0 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+                      {netCashFlow >= 0 ? '+' : '-'}${Math.abs(netCashFlow).toFixed(2)} Leftover
+                    </div>
+                  </div>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={netPayVsExpensesData}>
+                        <XAxis dataKey="name" stroke="#52525b" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#52525b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
+                        <Tooltip cursor={{ fill: '#27272a', opacity: 0.4 }} contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} itemStyle={{ color: '#fff' }} />
+                        <Bar dataKey="value" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Pay Breakdown */}
+                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-lg font-bold text-white capitalize">{totalsView} Pay Breakdown</h3>
+                    <div className="text-xs font-mono text-zinc-400">
+                      Gross: ${viewGross.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={payBreakdownData}>
+                        <XAxis dataKey="name" stroke="#52525b" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#52525b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
+                        <Tooltip cursor={{ fill: '#27272a', opacity: 0.4 }} contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} itemStyle={{ color: '#fff' }} />
+                        <Bar dataKey="value" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Emergency Fund Calculator */}
+                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold text-white mb-2">Emergency Fund Calculator</h3>
+                    <p className="text-sm text-zinc-500 mb-6">Based on your fixed bills of <span className="text-zinc-300 font-mono">${totalFixedMonthly.toFixed(2)}</span>/mo.</p>
+                    
+                    <div className="mb-8">
+                      <div className="flex justify-between text-xs text-zinc-400 font-bold mb-4">
+                        <span>1 Month</span>
+                        <span className="text-emerald-500 text-lg">{emergencyMonths} Months</span>
+                        <span>12 Months</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="1" 
+                        max="12" 
+                        value={emergencyMonths} 
+                        onChange={(e) => setEmergencyMonths(Number(e.target.value))}
+                        className="w-full h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 text-center">
+                    <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-2">Savings Goal</p>
+                    <p className="text-5xl font-bold text-white font-mono">${emergencyGoal.toFixed(2)}</p>
+                  </div>
+                </div>
+
+                {/* Category Breakdown */}
+                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
+                  <h3 className="text-lg font-bold text-white mb-6">Expenses by Category</h3>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={categoryData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={80}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {categoryData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} itemStyle={{ color: '#fff' }} formatter={(val: unknown) => `$${Number(val).toFixed(2)}`} />
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', color: '#a1a1aa' }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Fixed vs Variable */}
+                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
+                  <h3 className="text-lg font-bold text-white mb-6">Fixed vs. Variable</h3>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={fixedVsVariableData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={80}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {fixedVsVariableData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} itemStyle={{ color: '#fff' }} formatter={(val: unknown) => `$${Number(val).toFixed(2)}`} />
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', color: '#a1a1aa' }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
               </div>
             </div>
           )}

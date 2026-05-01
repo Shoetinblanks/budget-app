@@ -4,12 +4,17 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { User, DollarSign, Target, Shield, Plus, Trash2, Save } from 'lucide-react'
+import CheckStubUploader from '@/components/CheckStubUploader'
 
 interface IncomeSource {
   id?: string
   user_id?: string
   employer_name: string
   pay_frequency: string
+  gross_amount?: number
+  net_amount?: number
+  taxes?: number
+  deductions?: number
   isNew?: boolean
 }
 
@@ -73,7 +78,7 @@ export default function AccountPage() {
   }
 
   const handleAddIncome = () => {
-    setIncomeSources([...incomeSources, { employer_name: '', pay_frequency: 'bi-weekly', isNew: true }])
+    setIncomeSources([...incomeSources, { employer_name: '', pay_frequency: 'bi-weekly', gross_amount: 0, net_amount: 0, taxes: 0, deductions: 0, isNew: true }])
   }
 
   const handleRemoveIncome = async (index: number) => {
@@ -95,6 +100,10 @@ export default function AccountPage() {
         user_id: user?.id,
         employer_name: i.employer_name,
         pay_frequency: i.pay_frequency,
+        gross_amount: i.gross_amount || 0,
+        net_amount: i.net_amount || 0,
+        taxes: i.taxes || 0,
+        deductions: i.deductions || 0,
       }))
     )
     if (error) setMessage({ type: 'error', text: error.message })
@@ -235,6 +244,78 @@ export default function AccountPage() {
                       <option value="1st/15th">1st and 15th</option>
                       <option value="monthly">Monthly</option>
                     </select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <CheckStubUploader onScanComplete={(res) => {
+                      const newS = [...incomeSources]
+                      newS[index].gross_amount = res.gross
+                      newS[index].net_amount = res.net
+                      newS[index].taxes = res.taxes
+                      newS[index].deductions = res.deductions
+                      setIncomeSources(newS)
+                    }} />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-500 mb-1 uppercase">Gross Pay ($)</label>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      value={income.gross_amount || ''}
+                      onChange={e => {
+                        const newS = [...incomeSources]
+                        newS[index].gross_amount = Number(e.target.value)
+                        setIncomeSources(newS)
+                      }}
+                      placeholder="e.g. 3000"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-500 mb-1 uppercase">Net Pay ($)</label>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      value={income.net_amount || ''}
+                      onChange={e => {
+                        const newS = [...incomeSources]
+                        newS[index].net_amount = Number(e.target.value)
+                        setIncomeSources(newS)
+                      }}
+                      placeholder="e.g. 2500"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-500 mb-1 uppercase">Taxes ($)</label>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      value={income.taxes || ''}
+                      onChange={e => {
+                        const newS = [...incomeSources]
+                        newS[index].taxes = Number(e.target.value)
+                        setIncomeSources(newS)
+                      }}
+                      placeholder="e.g. 400"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-500 mb-1 uppercase">Deductions ($)</label>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      value={income.deductions || ''}
+                      onChange={e => {
+                        const newS = [...incomeSources]
+                        newS[index].deductions = Number(e.target.value)
+                        setIncomeSources(newS)
+                      }}
+                      placeholder="e.g. 100"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
                   </div>
                 </div>
               ))}
