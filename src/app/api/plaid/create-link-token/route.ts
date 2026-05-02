@@ -23,14 +23,17 @@ export async function POST() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const products = (process.env.PLAID_PRODUCTS?.split(',') || [Products.Transactions]) as Products[];
+    const countryCodes = (process.env.PLAID_COUNTRY_CODES?.split(',') || [CountryCode.Us]) as CountryCode[];
+
     const request: LinkTokenCreateRequest = {
       user: {
         // This should correspond to a unique id for the current user.
         client_user_id: user.id,
       },
-      client_name: 'Budget App',
-      products: [Products.Transactions],
-      country_codes: [CountryCode.Us],
+      client_name: 'ShoeBudgeting',
+      products: products,
+      country_codes: countryCodes,
       language: 'en',
     };
 
