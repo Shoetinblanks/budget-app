@@ -48,16 +48,19 @@ export default function Navbar() {
   return (
     <nav className="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16 items-center">
+        <div className="flex justify-between h-24 items-center">
           {/* Left: Logo */}
           <Link href="/" className="flex items-center">
             <Image 
-              src="/logo-1024x1024.png" 
+              src="/logo.png" 
               alt="ShoeBudgeting" 
-              width={40}
-              height={40}
-              className="rounded-lg h-10 w-auto"
+              width={80}
+              height={80}
+              className="rounded-xl h-20 w-auto"
             />
+            <span className="text-3xl font-bold text-white ml-4 tracking-tight hidden sm:block">
+              ShoeBudgeting
+            </span>
           </Link>
 
           {/* Right: Desktop Icons */}
@@ -113,7 +116,7 @@ export default function Navbar() {
             </button>
 
             {isMobileMenuOpen && (
-              <div className="absolute top-16 left-0 right-0 bg-zinc-900 border-b border-zinc-800 shadow-2xl py-4 px-4 space-y-2">
+              <div className="absolute top-24 left-0 right-0 bg-zinc-900 border-b border-zinc-800 shadow-2xl py-4 px-4 space-y-2">
                 <Link 
                   href="/" 
                   onClick={() => setIsMobileMenuOpen(false)}
