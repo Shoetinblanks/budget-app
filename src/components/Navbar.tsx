@@ -56,11 +56,8 @@ export default function Navbar() {
               alt="ShoeBudgeting" 
               width={80}
               height={80}
-              className="rounded-xl h-20 w-auto"
+              className="rounded-2xl h-20 w-auto shadow-lg"
             />
-            <span className="text-3xl font-bold text-white ml-4 tracking-tight hidden sm:block">
-              ShoeBudgeting
-            </span>
           </Link>
 
           {/* Right: Desktop Icons */}
