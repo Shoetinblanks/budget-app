@@ -94,6 +94,15 @@ export default function Dashboard() {
   const [isApplyingRules, setIsApplyingRules] = useState(false)
   const [isUndoing, setIsUndoing] = useState(false)
   
+  // Date Range Filter State
+  const [startDate, setStartDate] = useState<string>('')
+  const [endDate, setEndDate] = useState<string>('')
+
+  // Rule Modal State
+  const [isRuleModalOpen, setIsRuleModalOpen] = useState(false)
+  const [editingRule, setEditingRule] = useState<CategoryRule | null>(null)
+  const [ruleForm, setRuleForm] = useState<CategoryRule>({ merchant_pattern: '', category: 'General' })
+  
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
@@ -130,7 +139,7 @@ export default function Dashboard() {
         supabase.from('accounts').select('*').eq('user_id', user.id),
         supabase.from('expenses').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
         supabase.from('income_sources').select('*').eq('user_id', user.id),
-        supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false }).limit(200),
+        supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false }),
         supabase.from('category_rules').select('*').eq('user_id', user.id)
       ])
 
@@ -182,7 +191,7 @@ export default function Dashboard() {
       if (!error) {
         alert(`Successfully removed ${count || 'recent'} transactions.`)
         // Refresh
-        const { data } = await supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false }).limit(200)
+        const { data } = await supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false })
         setTransactions(data || [])
       } else {
         alert('Error undoing import: ' + error.message)
@@ -197,13 +206,17 @@ export default function Dashboard() {
     if (selectedTransactions.length === 0) return
     if (!confirm(`Are you sure you want to delete ${selectedTransactions.length} selected transactions?`)) return
 
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
     const { error } = await supabase
       .from('transactions')
       .delete()
       .in('id', selectedTransactions)
 
     if (!error) {
-      setTransactions(transactions.filter(t => !selectedTransactions.includes(t.id!)))
+      const { data } = await supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false })
+      setTransactions(data || [])
       setSelectedTransactions([])
     } else {
       alert('Error deleting transactions: ' + error.message)
@@ -248,7 +261,7 @@ export default function Dashboard() {
     // Refresh
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
-      const { data } = await supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false }).limit(200)
+      const { data } = await supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false })
       setTransactions(data || [])
     }
     
@@ -260,6 +273,65 @@ export default function Dashboard() {
     const { error } = await supabase.from('category_rules').delete().eq('id', id)
     if (!error) {
       setCategoryRules(categoryRules.filter(r => r.id !== id))
+    }
+  }
+
+  const openCreateRuleModal = (t?: Transaction) => {
+    if (t) {
+      let pattern = t.description;
+      // Heuristic cleaning
+      pattern = pattern.replace(/#\d+/g, '') // Remove store numbers like #1234
+      pattern = pattern.replace(/\b[A-Z]{2}\b$/, '') // Remove trailing state code like AZ or NV
+      pattern = pattern.replace(/\s+/g, ' ').trim()
+      
+      let suggestedCategory = t.category;
+      if (suggestedCategory === 'Charge' || suggestedCategory === 'General' || !suggestedCategory) {
+        const lower = pattern.toLowerCase();
+        if (lower.includes('wal-mart') || lower.includes('kroger') || lower.includes('safeway') || lower.includes('publix')) suggestedCategory = 'Food';
+        else if (lower.includes('caesars') || lower.includes('mgm') || lower.includes('wynn') || lower.includes('venetian')) suggestedCategory = 'Entertainment';
+        else if (lower.includes('shell') || lower.includes('chevron') || lower.includes('arco') || lower.includes('exxon')) suggestedCategory = 'Transportation';
+        else if (lower.includes('netflix') || lower.includes('spotify') || lower.includes('hulu') || lower.includes('hbo')) suggestedCategory = 'Entertainment';
+        else if (lower.includes('amazon')) suggestedCategory = 'General';
+        else if (lower.includes('mcdonald') || lower.includes('starbucks') || lower.includes('wendy') || lower.includes('taco bell')) suggestedCategory = 'Food';
+        else if (lower.includes('home depot') || lower.includes('lowes')) suggestedCategory = 'Housing';
+        else if (lower.includes('nv energy') || lower.includes('swgas') || lower.includes('water')) suggestedCategory = 'Utilities';
+      }
+      setRuleForm({ merchant_pattern: pattern, category: suggestedCategory || 'General' });
+    } else {
+      setRuleForm({ merchant_pattern: '', category: 'General' });
+    }
+    setEditingRule(null);
+    setIsRuleModalOpen(true);
+  }
+
+  const openEditRuleModal = (rule: CategoryRule) => {
+    setRuleForm(rule);
+    setEditingRule(rule);
+    setIsRuleModalOpen(true);
+  }
+
+  const handleSaveRuleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const ruleData = { ...ruleForm, user_id: user.id }
+    let error;
+
+    if (editingRule?.id) {
+      const { error: err } = await supabase.from('category_rules').update(ruleData).eq('id', editingRule.id)
+      error = err;
+    } else {
+      const { error: err } = await supabase.from('category_rules').insert(ruleData)
+      error = err;
+    }
+
+    if (!error) {
+      setIsRuleModalOpen(false)
+      const { data } = await supabase.from('category_rules').select('*').eq('user_id', user.id)
+      setCategoryRules(data || [])
+    } else {
+      alert('Error saving rule: ' + error.message)
     }
   }
 
@@ -286,10 +358,7 @@ export default function Dashboard() {
     }
   }
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
+  const processCSVFile = (file: File) => {
     setImportLoading(true)
     Papa.parse(file, {
       header: true,
@@ -300,6 +369,37 @@ export default function Dashboard() {
         setImportLoading(false)
       }
     })
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) processCSVFile(file)
+  }
+
+  const handleInlineCategoryChange = async (t: Transaction, newCategory: string) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    // 1. Update the transaction itself
+    await supabase.from('transactions').update({ category: newCategory }).eq('id', t.id)
+
+    // Update local state for immediate feedback
+    setTransactions(transactions.map(tr => tr.id === t.id ? { ...tr, category: newCategory } : tr))
+
+    // 2. Check for matching rules
+    const matchingRule = categoryRules.find(r => t.description.toLowerCase().includes(r.merchant_pattern.toLowerCase()))
+    
+    if (matchingRule) {
+      if (matchingRule.category !== newCategory) {
+        if (confirm(`A rule exists that categorizes "${matchingRule.merchant_pattern}" as ${matchingRule.category}.\n\nDo you want to update this rule to ${newCategory}?`)) {
+          const { error } = await supabase.from('category_rules').update({ category: newCategory }).eq('id', matchingRule.id)
+          if (!error) {
+            setCategoryRules(categoryRules.map(r => r.id === matchingRule.id ? { ...r, category: newCategory } : r))
+            alert('Rule updated successfully!')
+          }
+        }
+      }
+    }
   }
 
   const mapCSVToTransactions = (data: Record<string, string>[]): Transaction[] => {
@@ -397,23 +497,6 @@ export default function Dashboard() {
     setEditingExpense(expense)
     setFormState(expense)
     setIsModalOpen(true)
-  }
-
-  const handleSaveRule = async (merchantPattern: string, category: string) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    const { error } = await supabase.from('category_rules').insert({
-      user_id: user.id,
-      merchant_pattern: merchantPattern,
-      category: category
-    })
-
-    if (!error) {
-      const { data } = await supabase.from('category_rules').select('*').eq('user_id', user.id)
-      setCategoryRules(data || [])
-      alert(`Rule saved: "${merchantPattern}" will now be categorized as ${category}`)
-    }
   }
 
   if (loading) return <div className="p-8 text-zinc-500 animate-pulse">Loading dashboard...</div>
@@ -532,6 +615,12 @@ export default function Dashboard() {
     Actual: actualsByCategory[cat] || 0
   }))
 
+  const filteredTransactions = transactions.filter(t => {
+    if (startDate && t.transaction_date < startDate) return false;
+    if (endDate && t.transaction_date > endDate) return false;
+    return true;
+  });
+
   const tabs = [
     { id: 'transactions', label: 'Transactions', icon: ArrowUpDown },
     { id: 'expenses', label: 'Expenses', icon: Receipt },
@@ -615,7 +704,23 @@ export default function Dashboard() {
                     className="bg-zinc-950 border border-zinc-800 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
                   />
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
+                  <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1">
+                    <span className="text-xs text-zinc-500 uppercase font-bold">From</span>
+                    <input 
+                      type="date" 
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="bg-transparent text-sm text-white focus:outline-none [color-scheme:dark]"
+                    />
+                    <span className="text-xs text-zinc-500 uppercase font-bold ml-2">To</span>
+                    <input 
+                      type="date" 
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="bg-transparent text-sm text-white focus:outline-none [color-scheme:dark]"
+                    />
+                  </div>
                   {selectedTransactions.length > 0 && (
                     <button 
                       onClick={handleDeleteSelected}
@@ -656,7 +761,7 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/50">
-                    {transactions.map((t) => (
+                    {filteredTransactions.map((t) => (
                       <tr key={t.id} className={`group hover:bg-white/[0.02] transition-colors ${selectedTransactions.includes(t.id!) ? 'bg-blue-500/5' : ''}`}>
                         <td className="px-4 py-5">
                           <button 
@@ -676,27 +781,37 @@ export default function Dashboard() {
                         <td className="px-4 py-5 text-zinc-200">
                           {t.description}
                           <button 
-                            onClick={() => handleSaveRule(t.description, t.category)}
+                            onClick={() => openCreateRuleModal(t)}
                             className="ml-2 opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 rounded text-[10px] text-zinc-500 hover:text-blue-400 transition-all border border-zinc-700"
-                            title="Save as Category Rule"
+                            title="Create Smart Category Rule"
                           >
-                            Save Rule
+                            Create Rule
                           </button>
                         </td>
                         <td className="px-4 py-5">
-                          <span className="px-2 py-1 bg-zinc-800 rounded-md text-[10px] uppercase tracking-tighter text-zinc-400">
-                            {t.category}
-                          </span>
+                          <select
+                            value={t.category}
+                            onChange={(e) => handleInlineCategoryChange(t, e.target.value)}
+                            className="bg-transparent text-[10px] text-zinc-400 uppercase font-bold focus:outline-none focus:ring-1 focus:ring-blue-500 rounded p-1 border border-transparent hover:border-zinc-800 cursor-pointer"
+                          >
+                            <option value="Housing">Housing</option>
+                            <option value="Utilities">Utilities</option>
+                            <option value="Transportation">Transportation</option>
+                            <option value="Food">Food</option>
+                            <option value="Entertainment">Entertainment</option>
+                            <option value="Travel">Travel</option>
+                            <option value="General">General</option>
+                          </select>
                         </td>
                         <td className={`px-4 py-5 text-right font-mono ${t.amount < 0 ? 'text-red-400' : 'text-blue-400'}`}>
                           {t.amount < 0 ? '-' : '+'}${Math.abs(t.amount).toFixed(2)}
                         </td>
                       </tr>
                     ))}
-                    {transactions.length === 0 && (
+                    {filteredTransactions.length === 0 && (
                       <tr>
                         <td colSpan={5} className="px-4 py-20 text-center text-zinc-600">
-                          No transactions found. Click &quot;Import CSV&quot; to upload your statement.
+                          No transactions found. Adjust your date filters or click &quot;Import CSV&quot;.
                         </td>
                       </tr>
                     )}
@@ -800,12 +915,20 @@ export default function Dashboard() {
                           </span>
                         </td>
                         <td className="px-4 py-5 text-right">
-                          <button 
-                            onClick={() => handleDeleteRule(rule.id!)}
-                            className="p-2 hover:bg-red-500/10 rounded-md text-zinc-500 hover:text-red-400 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex justify-end gap-2">
+                            <button 
+                              onClick={() => openEditRuleModal(rule)}
+                              className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-500 hover:text-white transition-colors"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteRule(rule.id!)}
+                              className="p-1.5 hover:bg-red-500/10 rounded-md text-zinc-500 hover:text-red-400 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1085,10 +1208,26 @@ export default function Dashboard() {
             </div>
 
             <div className="flex flex-col md:flex-row gap-6 mb-8">
-              <label className="flex-1 flex flex-col items-center justify-center h-32 border-2 border-zinc-800 border-dashed rounded-2xl cursor-pointer bg-zinc-950 hover:bg-zinc-900 transition-all">
+              <label 
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    const file = e.dataTransfer.files[0];
+                    if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+                      processCSVFile(file);
+                    }
+                  }
+                }}
+                className="flex-1 flex flex-col items-center justify-center h-32 border-2 border-zinc-800 border-dashed rounded-2xl cursor-pointer bg-zinc-950 hover:bg-zinc-900 transition-all"
+              >
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
                   <Upload className="w-8 h-8 text-zinc-500 mb-2" />
-                  <p className="text-sm text-zinc-500">Click to upload or drag and drop</p>
+                  <p className="text-sm text-zinc-500">Click to upload or drag and drop CSV</p>
                 </div>
                 <input type="file" className="hidden" accept=".csv" onChange={handleFileUpload} />
               </label>
@@ -1260,6 +1399,66 @@ export default function Dashboard() {
               >
                 <Save className="w-5 h-5" />
                 {editingExpense ? 'Update Expense' : 'Save Expense'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Smart Rule Modal */}
+      {isRuleModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-8">
+              <div>
+                <h2 className="text-2xl font-bold text-white">{editingRule ? 'Edit Category Rule' : 'Create Smart Rule'}</h2>
+                <p className="text-sm text-zinc-500 mt-1">
+                  Transactions containing this pattern will automatically be categorized.
+                </p>
+              </div>
+              <button onClick={() => setIsRuleModalOpen(false)} className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500 self-start">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveRuleSubmit} className="space-y-6">
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">Merchant Pattern</label>
+                <input 
+                  required
+                  value={ruleForm.merchant_pattern}
+                  onChange={e => setRuleForm({ ...ruleForm, merchant_pattern: e.target.value })}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  placeholder="e.g. WAL-MART, CAESARS, NETFLIX"
+                />
+                <p className="text-xs text-zinc-600 mt-2">
+                  Keep it short and general (e.g. use &quot;WAL-MART&quot; instead of &quot;WAL-MART #1234 VEGAS NV&quot;) to match more transactions.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">Assign Category</label>
+                <select 
+                  value={ruleForm.category}
+                  onChange={e => setRuleForm({ ...ruleForm, category: e.target.value })}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="Housing">Housing</option>
+                  <option value="Utilities">Utilities</option>
+                  <option value="Transportation">Transportation</option>
+                  <option value="Food">Food</option>
+                  <option value="Entertainment">Entertainment</option>
+                  <option value="Travel">Travel</option>
+                  <option value="General">General</option>
+                </select>
+              </div>
+
+              <button 
+                type="submit"
+                className="w-full bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-4 rounded-2xl transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
+              >
+                <Save className="w-5 h-5" />
+                {editingRule ? 'Update Rule' : 'Save Smart Rule'}
               </button>
             </form>
           </div>
