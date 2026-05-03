@@ -3,10 +3,29 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Receipt, BarChart3, Wallet, Plus, Trash2, Edit2, X, Save, CheckCircle2, Circle, Upload, Search, Filter, ArrowUpDown } from 'lucide-react'
+import { 
+  Receipt, 
+  BarChart3, 
+  Wallet, 
+  Plus, 
+  Trash2, 
+  Edit2, 
+  X, 
+  Save, 
+  CheckCircle2, 
+  Circle, 
+  Upload, 
+  Search, 
+  Filter, 
+  ArrowUpDown, 
+  Settings, 
+  CheckSquare, 
+  Square, 
+  RotateCcw,
+  Check
+} from 'lucide-react'
 import Papa from 'papaparse'
 import { User } from '@supabase/supabase-js'
-import PlaidLinkButton from '@/components/PlaidLinkButton'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 interface Profile {
@@ -52,6 +71,7 @@ interface IncomeSource {
 }
 
 interface CategoryRule {
+  id?: string
   merchant_pattern: string
   category: string
 }
@@ -70,6 +90,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [emergencyMonths, setEmergencyMonths] = useState<number>(3)
   const [totalsView, setTotalsView] = useState<'bi-weekly' | 'monthly' | 'yearly'>('monthly')
+  const [selectedTransactions, setSelectedTransactions] = useState<string[]>([])
+  const [isApplyingRules, setIsApplyingRules] = useState(false)
+  const [isUndoing, setIsUndoing] = useState(false)
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -107,9 +130,8 @@ export default function Dashboard() {
         supabase.from('accounts').select('*').eq('user_id', user.id),
         supabase.from('expenses').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
         supabase.from('income_sources').select('*').eq('user_id', user.id),
-        supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false }).limit(50),
-        supabase.from('category_rules').select('*').eq('user_id', user.id),
-        supabase.from('plaid_items').select('*').eq('user_id', user.id)
+        supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false }).limit(200),
+        supabase.from('category_rules').select('*').eq('user_id', user.id)
       ])
 
       setProfile(pRes.data)
@@ -130,12 +152,115 @@ export default function Dashboard() {
     loadDashboardData()
   }, [supabase, router])
 
-  const handlePlaidSuccess = async () => {
-    // const { data: { user } } = await supabase.auth.getUser()
-    // if (!user) return
-    // const { data } = await supabase.from('plaid_items').select('*').eq('user_id', user.id)
-    // setPlaidItems(data || [])
-    alert('Bank account successfully linked!')
+  const handleUndoLastImport = async () => {
+    if (!confirm('Are you sure you want to undo the last import? This will delete all transactions added in the last batch.')) return
+    
+    setIsUndoing(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    // Find the absolute latest created_at
+    const { data: latest } = await supabase
+      .from('transactions')
+      .select('created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    if (latest && latest.length > 0) {
+      const latestTime = new Date(latest[0].created_at)
+      const windowStart = new Date(latestTime.getTime() - 5000).toISOString() // 5 second window
+      const windowEnd = new Date(latestTime.getTime() + 1000).toISOString()
+
+      const { error, count } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('user_id', user.id)
+        .gte('created_at', windowStart)
+        .lte('created_at', windowEnd)
+
+      if (!error) {
+        alert(`Successfully removed ${count || 'recent'} transactions.`)
+        // Refresh
+        const { data } = await supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false }).limit(200)
+        setTransactions(data || [])
+      } else {
+        alert('Error undoing import: ' + error.message)
+      }
+    } else {
+      alert('No transactions found to undo.')
+    }
+    setIsUndoing(false)
+  }
+
+  const handleDeleteSelected = async () => {
+    if (selectedTransactions.length === 0) return
+    if (!confirm(`Are you sure you want to delete ${selectedTransactions.length} selected transactions?`)) return
+
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .in('id', selectedTransactions)
+
+    if (!error) {
+      setTransactions(transactions.filter(t => !selectedTransactions.includes(t.id!)))
+      setSelectedTransactions([])
+    } else {
+      alert('Error deleting transactions: ' + error.message)
+    }
+  }
+
+  const handleApplyRulesToAll = async () => {
+    if (categoryRules.length === 0) {
+      alert('No rules found. Create some rules first!')
+      return
+    }
+
+    if (!confirm(`This will go through all ${transactions.length} visible transactions and update their categories based on your ${categoryRules.length} rules. Continue?`)) return
+
+    setIsApplyingRules(true)
+    let updateCount = 0
+
+    const updates = transactions.map(t => {
+      const rule = categoryRules.find(r => 
+        t.description.toLowerCase().includes(r.merchant_pattern.toLowerCase())
+      )
+      if (rule && rule.category !== t.category) {
+        updateCount++
+        return { ...t, category: rule.category }
+      }
+      return null
+    }).filter(Boolean) as Transaction[]
+
+    if (updates.length === 0) {
+      alert('No transactions needed updating based on current rules.')
+      setIsApplyingRules(false)
+      return
+    }
+
+    // Supabase upsert/update in batch
+    for (const update of updates) {
+      await supabase.from('transactions').update({ category: update.category }).eq('id', update.id)
+    }
+
+    alert(`Successfully updated ${updateCount} transactions!`)
+    
+    // Refresh
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data } = await supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false }).limit(200)
+      setTransactions(data || [])
+    }
+    
+    setIsApplyingRules(false)
+  }
+
+  const handleDeleteRule = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this rule?')) return
+    const { error } = await supabase.from('category_rules').delete().eq('id', id)
+    if (!error) {
+      setCategoryRules(categoryRules.filter(r => r.id !== id))
+    }
   }
 
   const handleSaveExpense = async (e: React.FormEvent) => {
@@ -391,9 +516,26 @@ export default function Dashboard() {
 
   const COLORS = ['#3b82f6', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
 
+  // Actual Spending Math (Last 30 Days)
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+  const actualsByCategory = transactions
+    .filter(t => new Date(t.transaction_date) >= thirtyDaysAgo)
+    .reduce((acc, t) => {
+      const amount = Math.abs(t.amount)
+      acc[t.category] = (acc[t.category] || 0) + amount
+      return acc
+    }, {} as Record<string, number>)
+
+  const budgetVsActualData = Object.keys(categoryDataMap).map(cat => ({
+    name: cat,
+    Budgeted: categoryDataMap[cat],
+    Actual: actualsByCategory[cat] || 0
+  }))
+
   const tabs = [
     { id: 'transactions', label: 'Transactions', icon: ArrowUpDown },
     { id: 'expenses', label: 'Expenses', icon: Receipt },
+    { id: 'rules', label: 'Rules', icon: Settings },
     { id: 'summary', label: 'Summary Totals', icon: BarChart3 },
     { id: 'direct-deposit', label: 'Direct Deposit', icon: Wallet },
   ]
@@ -413,10 +555,18 @@ export default function Dashboard() {
           <div className="flex gap-3">
             {activeTab === 'transactions' && (
               <>
-                <PlaidLinkButton onSuccess={handlePlaidSuccess} />
+                <button 
+                  onClick={handleUndoLastImport}
+                  disabled={isUndoing}
+                  className="bg-zinc-800 hover:bg-zinc-700 text-zinc-400 font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 border border-zinc-700 disabled:opacity-50"
+                  title="Undo the last batch of imported transactions"
+                >
+                  <RotateCcw className={`w-5 h-5 ${isUndoing ? 'animate-spin' : ''}`} />
+                  Undo Last Import
+                </button>
                 <button 
                   onClick={() => setIsImportModalOpen(true)}
-                  className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 border border-zinc-700"
+                  className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20"
                 >
                   <Upload className="w-5 h-5" />
                   Import CSV
@@ -466,6 +616,15 @@ export default function Dashboard() {
                   />
                 </div>
                 <div className="flex gap-2">
+                  {selectedTransactions.length > 0 && (
+                    <button 
+                      onClick={handleDeleteSelected}
+                      className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-sm font-bold border border-red-500/20 transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete {selectedTransactions.length}
+                    </button>
+                  )}
                   <button className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-500 transition-colors">
                     <Filter className="w-5 h-5" />
                   </button>
@@ -476,6 +635,20 @@ export default function Dashboard() {
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
+                      <th className="px-4 py-4 w-10">
+                        <button 
+                          onClick={() => {
+                            if (selectedTransactions.length === transactions.length) {
+                              setSelectedTransactions([])
+                            } else {
+                              setSelectedTransactions(transactions.map(t => t.id!))
+                            }
+                          }}
+                          className="text-zinc-600 hover:text-blue-500 transition-colors"
+                        >
+                          {selectedTransactions.length === transactions.length && transactions.length > 0 ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                        </button>
+                      </th>
                       <th className="px-4 py-4">Date</th>
                       <th className="px-4 py-4">Description</th>
                       <th className="px-4 py-4">Category</th>
@@ -484,7 +657,21 @@ export default function Dashboard() {
                   </thead>
                   <tbody className="divide-y divide-zinc-800/50">
                     {transactions.map((t) => (
-                      <tr key={t.id} className="group hover:bg-white/[0.02] transition-colors">
+                      <tr key={t.id} className={`group hover:bg-white/[0.02] transition-colors ${selectedTransactions.includes(t.id!) ? 'bg-blue-500/5' : ''}`}>
+                        <td className="px-4 py-5">
+                          <button 
+                            onClick={() => {
+                              if (selectedTransactions.includes(t.id!)) {
+                                setSelectedTransactions(selectedTransactions.filter(id => id !== t.id))
+                              } else {
+                                setSelectedTransactions([...selectedTransactions, t.id!])
+                              }
+                            }}
+                            className={`${selectedTransactions.includes(t.id!) ? 'text-blue-500' : 'text-zinc-700 group-hover:text-zinc-500'} transition-colors`}
+                          >
+                            {selectedTransactions.includes(t.id!) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                          </button>
+                        </td>
                         <td className="px-4 py-5 text-zinc-400 font-mono text-xs">{new Date(t.transaction_date).toLocaleDateString()}</td>
                         <td className="px-4 py-5 text-zinc-200">
                           {t.description}
@@ -508,7 +695,7 @@ export default function Dashboard() {
                     ))}
                     {transactions.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="px-4 py-20 text-center text-zinc-600">
+                        <td colSpan={5} className="px-4 py-20 text-center text-zinc-600">
                           No transactions found. Click &quot;Import CSV&quot; to upload your statement.
                         </td>
                       </tr>
@@ -569,6 +756,63 @@ export default function Dashboard() {
                       <tr>
                         <td colSpan={7} className="px-4 py-20 text-center text-zinc-600">
                           No expenses found. Click &quot;Add Expense&quot; to get started.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {activeTab === 'rules' && (
+            <div className="animate-in fade-in duration-500">
+              <div className="flex justify-between items-center mb-8">
+                <div>
+                  <h3 className="text-xl font-bold text-white">Categorization Rules</h3>
+                  <p className="text-sm text-zinc-500">Define how transactions are automatically categorized based on their description.</p>
+                </div>
+                <button 
+                  onClick={handleApplyRulesToAll}
+                  disabled={isApplyingRules}
+                  className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20 disabled:opacity-50"
+                >
+                  <Check className={`w-5 h-5 ${isApplyingRules ? 'animate-pulse' : ''}`} />
+                  Apply All Rules to Transactions
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
+                      <th className="px-4 py-4">Merchant Pattern</th>
+                      <th className="px-4 py-4">Target Category</th>
+                      <th className="px-4 py-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/50">
+                    {categoryRules.map((rule) => (
+                      <tr key={rule.id} className="group hover:bg-white/[0.02] transition-colors">
+                        <td className="px-4 py-5 font-mono text-zinc-200">{rule.merchant_pattern}</td>
+                        <td className="px-4 py-5">
+                          <span className="px-2 py-1 bg-zinc-800 rounded-md text-[10px] uppercase tracking-tighter text-blue-400 border border-blue-500/10">
+                            {rule.category}
+                          </span>
+                        </td>
+                        <td className="px-4 py-5 text-right">
+                          <button 
+                            onClick={() => handleDeleteRule(rule.id!)}
+                            className="p-2 hover:bg-red-500/10 rounded-md text-zinc-500 hover:text-red-400 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {categoryRules.length === 0 && (
+                      <tr>
+                        <td colSpan={3} className="px-4 py-20 text-center text-zinc-600">
+                          No rules found. Save a rule from the Transactions tab to see it here.
                         </td>
                       </tr>
                     )}
@@ -655,6 +899,23 @@ export default function Dashboard() {
                         <YAxis stroke="#52525b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
                         <Tooltip cursor={{ fill: '#27272a', opacity: 0.4 }} contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} itemStyle={{ color: '#fff' }} />
                         <Bar dataKey="value" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Category Comparison: Budget vs Actual */}
+                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl lg:col-span-2">
+                  <h3 className="text-lg font-bold text-white mb-6">Budget vs. Actual Spending (Last 30 Days)</h3>
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={budgetVsActualData}>
+                        <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
+                        <Tooltip cursor={{ fill: '#27272a', opacity: 0.4 }} contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} itemStyle={{ color: '#fff' }} />
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', color: '#a1a1aa', paddingTop: '20px' }} />
+                        <Bar dataKey="Budgeted" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="Actual" fill="#f43f5e" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
