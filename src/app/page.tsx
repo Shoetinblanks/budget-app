@@ -26,7 +26,6 @@ export default function Dashboard() {
   const [categories, setCategories] = useState<Category[]>([])
 
   const [loading, setLoading] = useState(true)
-  const [totalsView] = useState<'bi-weekly' | 'monthly' | 'yearly'>('monthly')
   const [selectedTransactions, setSelectedTransactions] = useState<string[]>([])
   const [isApplyingRules, setIsApplyingRules] = useState(false)
   const [isUndoing, setIsUndoing] = useState(false)
@@ -373,33 +372,26 @@ export default function Dashboard() {
 
   const totalMonthly = expenses.reduce((sum, e) => sum + Number(e.monthly_amount || 0), 0)
 
-  let viewMultiplier = 1
-  if (totalsView === 'bi-weekly') viewMultiplier = 12 / 26
-  if (totalsView === 'yearly') viewMultiplier = 12
 
-  // The income basis changes to use the average * standard multipliers since we now use pay period entries
-  // Let's assume the user enters them bi-weekly, or we just project the average forward as bi-weekly equivalents.
-  // Actually, standardizing on the average paycheck amount:
-  const monthlyNet = avgNet * 2.16 // approx
-  
-  const viewNetPay = monthlyNet * viewMultiplier
-  const viewExpenses = totalMonthly * viewMultiplier
+
 
   const categoryDataMap = expenses.reduce((acc, exp) => {
     acc[exp.category] = (acc[exp.category] || 0) + Number(exp.monthly_amount)
     return acc
   }, {} as Record<string, number>)
 
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-  const actualsByCategory = transactions
-    .filter(t => new Date(t.transaction_date) >= thirtyDaysAgo)
-    .reduce((acc, t) => {
-      acc[t.category] = (acc[t.category] || 0) + Math.abs(t.amount)
-      return acc
-    }, {} as Record<string, number>)
+  // This-month actual spending (negative transactions = spending)
+  const now = new Date()
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  const thisMonthSpending = transactions.filter(t => t.transaction_date >= monthStart && t.amount < 0)
+  const thisMonthActualByCategory = thisMonthSpending.reduce((acc, t) => {
+    acc[t.category] = (acc[t.category] || 0) + Math.abs(t.amount)
+    return acc
+  }, {} as Record<string, number>)
+  const totalActualThisMonth = Object.values(thisMonthActualByCategory).reduce((a, b) => a + b, 0)
 
   const budgetVsActualData = Object.keys(categoryDataMap).map(cat => ({
-    name: cat, Budgeted: categoryDataMap[cat], Actual: actualsByCategory[cat] || 0
+    name: cat, Budgeted: categoryDataMap[cat], Actual: thisMonthActualByCategory[cat] || 0
   }))
 
   const navTabs = [
@@ -413,7 +405,7 @@ export default function Dashboard() {
   ]
 
   return (
-    <div className="min-h-screen bg-zinc-950 p-4 sm:p-8">
+    <div className="min-h-screen bg-zinc-950 p-4 sm:p-8" style={{background: 'linear-gradient(135deg, #0f0f12 0%, #111115 100%)'}}>
       <div className="max-w-7xl mx-auto">
         <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
@@ -455,15 +447,15 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <div className="flex flex-wrap gap-2 mb-8 bg-zinc-900/50 p-1.5 rounded-2xl border border-zinc-800 w-fit">
+        <div className="flex flex-wrap gap-2 mb-8 bg-zinc-800/80 p-1.5 rounded-2xl border border-zinc-700 w-fit">
           {navTabs.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === tab.id ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}>
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === tab.id ? 'bg-zinc-700 text-white shadow-lg border border-zinc-600' : 'text-zinc-400 hover:text-zinc-200'}`}>
               <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? 'text-blue-500' : ''}`} /> {tab.label}
             </button>
           ))}
         </div>
 
-        <main className="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-3xl p-6 md:p-8 shadow-2xl min-h-[400px]">
+        <main className="bg-zinc-900 border border-zinc-700 rounded-3xl p-6 md:p-8 shadow-2xl min-h-[400px]">
           
           {/* TRANSACTIONS */}
           {activeTab === 'transactions' && (
@@ -698,53 +690,114 @@ export default function Dashboard() {
           {/* SUMMARY */}
           {activeTab === 'summary' && (
             <div className="animate-in fade-in space-y-8">
-              {/* Category Cards */}
+              {/* Top-level KPIs */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {categories.map(c => {
-                  const amt = categoryDataMap[c.name] || 0
-                  if (amt === 0) return null
-                  return (
-                    <div key={c.id} className="bg-zinc-950/50 border border-zinc-800 p-4 rounded-xl border-l-4" style={{ borderLeftColor: c.color }}>
-                      <p className="text-zinc-500 text-xs uppercase font-bold">{c.name}</p>
-                      <p className="text-2xl font-bold text-white font-mono mt-1">{fmt(amt)}</p>
-                    </div>
-                  )
-                })}
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
-                  <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-bold text-white capitalize">{totalsView} Cash Flow</h3>
-                  </div>
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={[{ name: 'Income', value: viewNetPay, fill: '#3b82f6' }, { name: 'Expenses', value: viewExpenses, fill: '#f43f5e' }]}>
-                        <XAxis dataKey="name" stroke="#52525b" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#52525b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
-                        <Tooltip cursor={{ fill: '#27272a', opacity: 0.4 }} contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} />
-                        <Bar dataKey="value" radius={[6, 6, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                <div className="bg-zinc-800 border border-zinc-700 p-5 rounded-2xl">
+                  <p className="text-zinc-400 text-xs uppercase font-bold tracking-widest mb-1">Avg Net Income</p>
+                  <p className="text-2xl font-bold text-blue-400 font-mono">{fmt(avgNet)}</p>
+                  <p className="text-zinc-500 text-xs mt-1">{incomeSources.length} paychecks</p>
                 </div>
-
-                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
-                  <h3 className="text-lg font-bold text-white mb-6">Budget vs Actual (30 Days)</h3>
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={budgetVsActualData}>
-                        <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
-                        <Tooltip cursor={{ fill: '#27272a', opacity: 0.4 }} contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} />
-                        <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                        <Bar dataKey="Budgeted" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="Actual" fill="#f43f5e" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                <div className="bg-zinc-800 border border-zinc-700 p-5 rounded-2xl">
+                  <p className="text-zinc-400 text-xs uppercase font-bold tracking-widest mb-1">Monthly Budget</p>
+                  <p className="text-2xl font-bold text-white font-mono">{fmt(totalMonthly)}</p>
+                  <p className="text-zinc-500 text-xs mt-1">{expenses.length} expenses</p>
+                </div>
+                <div className="bg-zinc-800 border border-zinc-700 p-5 rounded-2xl">
+                  <p className="text-zinc-400 text-xs uppercase font-bold tracking-widest mb-1">Spent This Month</p>
+                  <p className={`text-2xl font-bold font-mono ${totalActualThisMonth > totalMonthly ? 'text-red-400' : 'text-emerald-400'}`}>{fmt(totalActualThisMonth)}</p>
+                  <p className="text-zinc-500 text-xs mt-1">{thisMonthSpending.length} transactions</p>
+                </div>
+                <div className="bg-zinc-800 border border-zinc-700 p-5 rounded-2xl">
+                  <p className="text-zinc-400 text-xs uppercase font-bold tracking-widest mb-1">Remaining Budget</p>
+                  {(() => { const rem = totalMonthly - totalActualThisMonth; return (
+                    <>
+                      <p className={`text-2xl font-bold font-mono ${rem >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{rem >= 0 ? '' : '-'}{fmt(Math.abs(rem))}</p>
+                      <p className="text-zinc-500 text-xs mt-1">{totalMonthly > 0 ? Math.round((totalActualThisMonth / totalMonthly) * 100) : 0}% used</p>
+                    </>
+                  )})()}
                 </div>
               </div>
+
+              {/* Per-Category Budget vs Actual */}
+              <div className="bg-zinc-800 border border-zinc-700 rounded-2xl overflow-hidden">
+                <div className="p-4 border-b border-zinc-700">
+                  <h3 className="font-bold text-white">Category Breakdown — This Month</h3>
+                  <p className="text-zinc-400 text-xs mt-0.5">Budget (from expenses) vs actual spending (from transactions)</p>
+                </div>
+                <div className="divide-y divide-zinc-700/60">
+                  {categories.filter(c => (categoryDataMap[c.name] || 0) > 0 || (thisMonthActualByCategory[c.name] || 0) > 0).map(c => {
+                    const budgeted = categoryDataMap[c.name] || 0
+                    const actual = thisMonthActualByCategory[c.name] || 0
+                    const pct = budgeted > 0 ? Math.min((actual / budgeted) * 100, 100) : 100
+                    const over = actual > budgeted && budgeted > 0
+                    const barColor = pct < 80 ? '#10b981' : pct < 100 ? '#f59e0b' : '#f43f5e'
+                    return (
+                      <div key={c.id} className="p-4">
+                        <div className="flex justify-between items-center mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full" style={{backgroundColor: c.color}} />
+                            <span className="text-zinc-200 font-medium text-sm">{c.name}</span>
+                            {over && <span className="text-[10px] font-bold text-red-400 bg-red-400/10 px-1.5 py-0.5 rounded-full">OVER</span>}
+                          </div>
+                          <div className="flex items-center gap-6 text-sm">
+                            <div className="text-right">
+                              <p className="text-zinc-500 text-[10px] uppercase">Budget</p>
+                              <p className="text-zinc-300 font-mono font-bold">{fmt(budgeted)}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-zinc-500 text-[10px] uppercase">Actual</p>
+                              <p className={`font-mono font-bold ${over ? 'text-red-400' : 'text-emerald-400'}`}>{fmt(actual)}</p>
+                            </div>
+                            <div className="text-right w-14">
+                              <p className="text-zinc-500 text-[10px] uppercase">% Used</p>
+                              <p className="text-zinc-300 font-mono font-bold">{budgeted > 0 ? Math.round((actual/budgeted)*100) : '—'}%</p>
+                            </div>
+                          </div>
+                        </div>
+                        {budgeted > 0 && (
+                          <div className="h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full transition-all" style={{width: `${pct}%`, backgroundColor: barColor}} />
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {categories.filter(c => (categoryDataMap[c.name] || 0) > 0 || (thisMonthActualByCategory[c.name] || 0) > 0).length === 0 && (
+                    <p className="p-8 text-center text-zinc-500">No expenses or transactions yet.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Budget vs Actual Chart */}
+              <div className="bg-zinc-800 border border-zinc-700 p-6 rounded-2xl">
+                <h3 className="text-base font-bold text-white mb-5">Budget vs Actual — This Month</h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={budgetVsActualData}>
+                      <XAxis dataKey="name" stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
+                      <Tooltip cursor={{ fill: '#3f3f46', opacity: 0.5 }} contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46', borderRadius: '12px' }} itemStyle={{ color: '#fff' }} />
+                      <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', color: '#a1a1aa', paddingTop: '10px' }} />
+                      <Bar dataKey="Budgeted" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="Actual" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Income Summary */}
+              {incomeSources.length > 0 && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-zinc-800 border border-zinc-700 p-5 rounded-2xl">
+                    <p className="text-zinc-400 text-xs uppercase font-bold tracking-widest mb-1">Avg Gross / Paycheck</p>
+                    <p className="text-2xl font-bold text-white font-mono">{fmt(avgGross)}</p>
+                  </div>
+                  <div className="bg-zinc-800 border border-zinc-700 p-5 rounded-2xl">
+                    <p className="text-zinc-400 text-xs uppercase font-bold tracking-widest mb-1">Avg Net / Paycheck</p>
+                    <p className="text-2xl font-bold text-blue-400 font-mono">{fmt(avgNet)}</p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </main>
@@ -754,8 +807,8 @@ export default function Dashboard() {
 
       {/* Import Modal */}
       {isImportModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-4xl rounded-3xl p-8 max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-zinc-800 border border-zinc-600 w-full max-w-4xl rounded-3xl p-8 max-h-[90vh] flex flex-col">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-white">Import CSV</h2>
               <button onClick={() => setIsImportModalOpen(false)} className="btn-icon"><X className="w-6 h-6" /></button>
@@ -767,7 +820,7 @@ export default function Dashboard() {
                 <span className="text-sm text-zinc-500">Click to upload CSV</span>
                 <input type="file" className="hidden" accept=".csv" onChange={handleFileUpload} />
               </label>
-              <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 flex flex-col justify-center gap-2">
+              <div className="bg-zinc-700 border border-zinc-600 rounded-2xl p-4 flex flex-col justify-center gap-2">
                 {autoFlipDetected && <span className="text-xs text-blue-400 font-bold bg-blue-500/10 px-2 py-1 rounded w-fit">Auto-detected!</span>}
                 <label className="flex items-center gap-3 text-sm font-medium text-zinc-300 cursor-pointer">
                   <input type="checkbox" checked={flipAmounts} onChange={e => { setFlipAmounts(e.target.checked); if(importPreview.length) setImportPreview(importPreview.map(t=>({...t, amount: t.amount*-1}))) }} className="rounded border-zinc-800 bg-zinc-900 text-blue-500" />
@@ -798,8 +851,8 @@ export default function Dashboard() {
 
       {/* Expense Modal */}
       {isExpenseModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-lg rounded-3xl p-8">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-zinc-800 border border-zinc-600 w-full max-w-lg rounded-3xl p-8">
             <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-white">{editingExpense ? 'Edit' : 'Add'} Expense</h2><button onClick={() => setIsExpenseModalOpen(false)} className="btn-icon"><X/></button></div>
             <form onSubmit={handleSaveExpense} className="space-y-4">
               <div><label className="text-xs font-bold text-zinc-500 uppercase">Name</label><input required value={expenseForm.name} onChange={e=>setExpenseForm({...expenseForm, name: e.target.value})} className="input-field" /></div>
@@ -816,7 +869,7 @@ export default function Dashboard() {
                 <div><label className="text-xs font-bold text-zinc-500 uppercase">Category</label><select value={expenseForm.category} onChange={e=>setExpenseForm({...expenseForm, category: e.target.value})} className="input-field">{categories.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
                 <div><label className="text-xs font-bold text-zinc-500 uppercase">Account</label><select value={expenseForm.account_code} onChange={e=>setExpenseForm({...expenseForm, account_code: e.target.value})} className="input-field">{accounts.map(a=><option key={a.id} value={a.account_code}>{a.name} ({a.account_code})</option>)}</select></div>
               </div>
-              <label className="flex items-center gap-3 p-4 bg-zinc-950 border border-zinc-800 rounded-xl cursor-pointer">
+              <label className="flex items-center gap-3 p-4 bg-zinc-700 border border-zinc-600 rounded-xl cursor-pointer">
                 <input type="checkbox" checked={expenseForm.fixed} onChange={e=>setExpenseForm({...expenseForm, fixed: e.target.checked})} className="rounded bg-zinc-900 border-zinc-700 text-blue-500"/>
                 <div><p className="text-sm font-bold text-zinc-200">Fixed Bill</p><p className="text-xs text-zinc-500">Used for emergency fund math</p></div>
               </label>
@@ -828,8 +881,8 @@ export default function Dashboard() {
 
       {/* Income Modal */}
       {isIncomeModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-8">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-zinc-800 border border-zinc-600 w-full max-w-sm rounded-3xl p-8">
             <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-white">{editingIncome ? 'Edit' : 'Add'} Paycheck</h2><button onClick={() => setIsIncomeModalOpen(false)} className="btn-icon"><X/></button></div>
             <form onSubmit={handleSaveIncome} className="space-y-4">
               <div><label className="text-xs font-bold text-zinc-500 uppercase">Pay Period Label</label><input required value={incomeForm.employer_name} onChange={e=>setIncomeForm({...incomeForm, employer_name: e.target.value})} placeholder="e.g. May 1-15" className="input-field" /></div>
@@ -846,8 +899,8 @@ export default function Dashboard() {
 
       {/* Account Modal */}
       {isAccountModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-8">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-zinc-800 border border-zinc-600 w-full max-w-sm rounded-3xl p-8">
             <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-white">{editingAccount ? 'Edit' : 'Add'} Account</h2><button onClick={() => setIsAccountModalOpen(false)} className="btn-icon"><X/></button></div>
             <form onSubmit={handleSaveAccount} className="space-y-4">
               <div><label className="text-xs font-bold text-zinc-500 uppercase">Account Name</label><input required value={accountForm.name} onChange={e=>setAccountForm({...accountForm, name: e.target.value})} className="input-field" /></div>
@@ -863,8 +916,8 @@ export default function Dashboard() {
 
       {/* Category Modal */}
       {isCategoryModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-8">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-zinc-800 border border-zinc-600 w-full max-w-sm rounded-3xl p-8">
             <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-white">{editingCategory ? 'Edit' : 'Add'} Category</h2><button onClick={() => setIsCategoryModalOpen(false)} className="btn-icon"><X/></button></div>
             <form onSubmit={handleSaveCategory} className="space-y-6">
               <div><label className="text-xs font-bold text-zinc-500 uppercase">Name</label><input required value={categoryForm.name} onChange={e=>setCategoryForm({...categoryForm, name: e.target.value})} className="input-field" /></div>
@@ -884,8 +937,8 @@ export default function Dashboard() {
 
       {/* Rule Modal */}
       {isRuleModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-8">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-zinc-800 border border-zinc-600 w-full max-w-sm rounded-3xl p-8">
             <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-white">Rule</h2><button onClick={() => setIsRuleModalOpen(false)} className="btn-icon"><X/></button></div>
             <form onSubmit={handleSaveRule} className="space-y-4">
               <div><label className="text-xs font-bold text-zinc-500 uppercase">Pattern</label><input required value={ruleForm.merchant_pattern} onChange={e=>setRuleForm({...ruleForm, merchant_pattern: e.target.value})} className="input-field font-mono" /></div>
