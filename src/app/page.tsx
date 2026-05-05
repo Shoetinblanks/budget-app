@@ -255,7 +255,10 @@ export default function Dashboard() {
     e.preventDefault()
     if (!user) return
     const amt = parseCurrencyInput(expenseAmountStr)
-    const { monthly, biWeekly } = calcAmounts(amt, expenseForm.frequency)
+    const { monthly: rawMonthly } = calcAmounts(amt, expenseForm.frequency)
+    const roundTarget = profile?.round_up_target || 10
+    const monthly = Math.ceil(rawMonthly / roundTarget) * roundTarget
+    const biWeekly = +(monthly / 2.17).toFixed(2)
     const expenseData: Expense = { 
       user_id: user.id, name: expenseForm.name, frequency: expenseForm.frequency,
       monthly_amount: monthly, bi_weekly_amount: biWeekly, 
