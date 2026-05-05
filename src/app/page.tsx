@@ -57,6 +57,8 @@ export default function Dashboard() {
   const [showNewCategoryInExpense, setShowNewCategoryInExpense] = useState(false)
   const [newCatName, setNewCatName] = useState('')
   const [newCatColor, setNewCatColor] = useState(PRESET_COLORS[0])
+  const [expenseSortKey, setExpenseSortKey] = useState<'name' | 'category' | 'frequency' | 'monthly_amount' | 'bi_weekly_amount' | 'account_code'>('name')
+  const [expenseSortDir, setExpenseSortDir] = useState<'asc' | 'desc'>('asc')
   const [ruleForm, setRuleForm] = useState<CategoryRule>({ merchant_pattern: '', category: 'General' })
   const [categoryForm, setCategoryForm] = useState<Category>({ name: '', color: PRESET_COLORS[0] })
   const [incomeForm, setIncomeForm] = useState<IncomeSource>({ employer_name: '', pay_date: '', pay_frequency: 'bi-weekly', gross_amount: 0, net_amount: 0 })
@@ -67,6 +69,10 @@ export default function Dashboard() {
   const [incomeImportMode, setIncomeImportMode] = useState<'form' | 'paste'>('form')
   const [incomePasteText, setIncomePasteText] = useState('')
   const [incomePastePreview, setIncomePastePreview] = useState<IncomeSource[]>([])
+  const [incomeViewPreset, setIncomeViewPreset] = useState<'default' | 'year' | '6m' | '90d' | '30d' | 'custom'>('default')
+  const [incomeViewStart, setIncomeViewStart] = useState('')
+  const [incomeViewEnd, setIncomeViewEnd] = useState('')
+  const [incomeDisplayLimit, setIncomeDisplayLimit] = useState<number | 'all'>(50)
   const [accountForm, setAccountForm] = useState<Account>({ name: '', account_code: '', type: 'checking' })
 
   // Import State
@@ -644,15 +650,41 @@ export default function Dashboard() {
           )}
 
           {/* EXPENSES */}
-          {activeTab === 'expenses' && (
+          {activeTab === 'expenses' && (() => {
+            const handleExpenseSort = (key: typeof expenseSortKey) => {
+              if (expenseSortKey === key) setExpenseSortDir(d => d === 'asc' ? 'desc' : 'asc')
+              else { setExpenseSortKey(key); setExpenseSortDir('asc') }
+            }
+            const SortIcon = ({ col }: { col: typeof expenseSortKey }) => (
+              <span className={`ml-1 text-[10px] ${expenseSortKey === col ? 'text-blue-400' : 'text-zinc-600'}`}>
+                {expenseSortKey === col ? (expenseSortDir === 'asc' ? '▲' : '▼') : '⇅'}
+              </span>
+            )
+            const sortedExpenses = [...expenses].sort((a, b) => {
+              const av = a[expenseSortKey] ?? ''
+              const bv = b[expenseSortKey] ?? ''
+              const cmp = typeof av === 'number' && typeof bv === 'number'
+                ? av - bv
+                : String(av).toLowerCase().localeCompare(String(bv).toLowerCase())
+              return expenseSortDir === 'asc' ? cmp : -cmp
+            })
+            return (
             <div className="animate-in fade-in">
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto rounded-xl border border-zinc-800/50">
                 <table className="w-full text-left text-sm">
-                  <thead className="border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
-                    <tr><th className="p-4">Name</th><th className="p-4">Category</th><th className="p-4 text-center">Freq</th><th className="p-4 text-right">Monthly</th><th className="p-4 text-right">Bi-Weekly</th><th className="p-4 text-center">Account</th><th className="p-4 text-right">Actions</th></tr>
+                  <thead className="bg-zinc-950/50 border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
+                    <tr>
+                      <th className="p-4 cursor-pointer hover:text-zinc-300 select-none" onClick={() => handleExpenseSort('name')}>Name <SortIcon col="name" /></th>
+                      <th className="p-4 cursor-pointer hover:text-zinc-300 select-none" onClick={() => handleExpenseSort('category')}>Category <SortIcon col="category" /></th>
+                      <th className="p-4 text-center cursor-pointer hover:text-zinc-300 select-none" onClick={() => handleExpenseSort('frequency')}>Freq <SortIcon col="frequency" /></th>
+                      <th className="p-4 text-right cursor-pointer hover:text-zinc-300 select-none" onClick={() => handleExpenseSort('monthly_amount')}>Monthly <SortIcon col="monthly_amount" /></th>
+                      <th className="p-4 text-right cursor-pointer hover:text-zinc-300 select-none" onClick={() => handleExpenseSort('bi_weekly_amount')}>Bi-Weekly <SortIcon col="bi_weekly_amount" /></th>
+                      <th className="p-4 text-center cursor-pointer hover:text-zinc-300 select-none" onClick={() => handleExpenseSort('account_code')}>Account <SortIcon col="account_code" /></th>
+                      <th className="p-4 text-right">Actions</th>
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/50">
-                    {expenses.map((e) => (
+                    {sortedExpenses.map((e) => (
                       <tr key={e.id} className="hover:bg-white/[0.02]">
                         <td className="p-4">
                           <p className="font-medium text-zinc-200">{e.name} {e.fixed && <CheckCircle2 className="inline w-3 h-3 text-blue-500 ml-1" />}</p>
@@ -669,15 +701,51 @@ export default function Dashboard() {
                         </td>
                       </tr>
                     ))}
+                    {expenses.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-zinc-600">No expenses yet.</td></tr>}
                   </tbody>
                 </table>
               </div>
             </div>
-          )}
+            )
+          })()}
 
           {/* INCOME */}
           {activeTab === 'income' && (() => {
-            const sortedIncome = [...incomeSources].sort((a, b) => {
+            // --- Compute view window from preset ---
+            const today = new Date()
+            const toYMD = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+            let viewStart = ''
+            let viewEnd = ''
+            if (incomeViewPreset === 'default') {
+              const cut = new Date(); cut.setMonth(cut.getMonth() - incomeAvgMonths)
+              viewStart = toYMD(cut)
+            } else if (incomeViewPreset === 'year') {
+              viewStart = `${today.getFullYear()}-01-01`
+            } else if (incomeViewPreset === '6m') {
+              const cut = new Date(); cut.setMonth(cut.getMonth() - 6); viewStart = toYMD(cut)
+            } else if (incomeViewPreset === '90d') {
+              const cut = new Date(); cut.setDate(cut.getDate() - 90); viewStart = toYMD(cut)
+            } else if (incomeViewPreset === '30d') {
+              const cut = new Date(); cut.setDate(cut.getDate() - 30); viewStart = toYMD(cut)
+            } else {
+              viewStart = incomeViewStart
+              viewEnd = incomeViewEnd
+            }
+
+            const viewFiltered = incomeSources.filter(i => {
+              if (!i.pay_date) return false
+              if (viewStart && i.pay_date < viewStart) return false
+              if (viewEnd && i.pay_date > viewEnd) return false
+              return true
+            })
+
+            // --- Per-view averages ---
+            const viewCount = viewFiltered.length || 1
+            const viewAvgGross = viewFiltered.reduce((s, i) => s + Number(i.gross_amount || 0), 0) / viewCount
+            const viewAvgNet = viewFiltered.reduce((s, i) => s + Number(i.net_amount || 0), 0) / viewCount
+
+            // --- Sort + limit for display ---
+            const sortedIncome = [...viewFiltered].sort((a, b) => {
               let av: number | string = a[incomeSortKey] ?? 0
               let bv: number | string = b[incomeSortKey] ?? 0
               if (incomeSortKey === 'pay_date') { av = String(av); bv = String(bv) }
@@ -686,26 +754,79 @@ export default function Dashboard() {
               if (av > bv) return incomeSortDir === 'asc' ? 1 : -1
               return 0
             })
+            const displayedIncome = incomeDisplayLimit === 'all' ? sortedIncome : sortedIncome.slice(0, incomeDisplayLimit)
+
             const SortIcon = ({ col }: { col: typeof incomeSortKey }) => (
               <span className={`ml-1 text-[10px] ${incomeSortKey === col ? 'text-blue-400' : 'text-zinc-600'}`}>
                 {incomeSortKey === col ? (incomeSortDir === 'asc' ? '▲' : '▼') : '⇅'}
               </span>
             )
+
+            const presets: { key: typeof incomeViewPreset, label: string }[] = [
+              { key: 'default', label: `Default (${incomeAvgMonths}mo)` },
+              { key: 'year',    label: 'This Year' },
+              { key: '6m',     label: 'Last 6 Months' },
+              { key: '90d',    label: 'Last 90 Days' },
+              { key: '30d',    label: 'Last 30 Days' },
+              { key: 'custom', label: 'Custom' },
+            ]
+
             return (
-            <div className="animate-in fade-in space-y-8">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
-                  <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-1">Average Gross</p>
-                  <p className="text-3xl font-bold text-white font-mono">{fmt(avgGross)}</p>
-                  <p className="text-zinc-600 text-xs mt-2">{windowedIncome.length} paychecks · last {incomeAvgMonths} months</p>
-                </div>
-                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
-                  <p className="text-blue-500/70 text-xs uppercase font-bold tracking-widest mb-1">Average Net (Take Home)</p>
-                  <p className="text-3xl font-bold text-blue-400 font-mono">{fmt(avgNet)}</p>
-                  <p className="text-zinc-600 text-xs mt-2">{windowedIncome.length} paychecks · last {incomeAvgMonths} months</p>
+            <div className="animate-in fade-in space-y-6">
+
+              {/* Filter toolbar */}
+              <div className="flex flex-wrap items-center gap-2">
+                {presets.map(p => (
+                  <button
+                    key={p.key}
+                    onClick={() => setIncomeViewPreset(p.key)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                      incomeViewPreset === p.key
+                        ? 'bg-blue-500 text-white border-blue-500'
+                        : 'bg-transparent text-zinc-400 border-zinc-700 hover:border-zinc-500 hover:text-zinc-200'
+                    }`}
+                  >{p.label}</button>
+                ))}
+
+                {incomeViewPreset === 'custom' && (
+                  <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1 ml-1">
+                    <input type="date" value={incomeViewStart} onChange={e => setIncomeViewStart(e.target.value)} className="bg-transparent text-sm text-white focus:outline-none [color-scheme:dark]" />
+                    <span className="text-xs text-zinc-500">TO</span>
+                    <input type="date" value={incomeViewEnd} onChange={e => setIncomeViewEnd(e.target.value)} className="bg-transparent text-sm text-white focus:outline-none [color-scheme:dark]" />
+                  </div>
+                )}
+
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-xs text-zinc-500">{viewFiltered.length} paychecks</span>
+                  <select
+                    value={incomeDisplayLimit}
+                    onChange={e => setIncomeDisplayLimit(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                    className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-white"
+                  >
+                    <option value={10}>Show 10</option>
+                    <option value={25}>Show 25</option>
+                    <option value={50}>Show 50</option>
+                    <option value={100}>Show 100</option>
+                    <option value="all">Show All</option>
+                  </select>
                 </div>
               </div>
 
+              {/* Stat cards */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
+                  <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-1">Average Gross</p>
+                  <p className="text-3xl font-bold text-white font-mono">{fmt(viewAvgGross)}</p>
+                  <p className="text-zinc-600 text-xs mt-2">{viewFiltered.length} paychecks in view</p>
+                </div>
+                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
+                  <p className="text-blue-500/70 text-xs uppercase font-bold tracking-widest mb-1">Average Net (Take Home)</p>
+                  <p className="text-3xl font-bold text-blue-400 font-mono">{fmt(viewAvgNet)}</p>
+                  <p className="text-zinc-600 text-xs mt-2">{viewFiltered.length} paychecks in view</p>
+                </div>
+              </div>
+
+              {/* Table */}
               <div className="overflow-x-auto rounded-xl border border-zinc-800/50">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-zinc-950/50 border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
@@ -717,7 +838,7 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/50">
-                    {sortedIncome.map(i => (
+                    {displayedIncome.map(i => (
                       <tr key={i.id} className="hover:bg-white/[0.02]">
                         <td className="p-4 text-zinc-400 font-mono">{i.pay_date ? (() => { const [y,m,d] = (i.pay_date||'').split('-'); return new Date(+y, +m-1, +d).toLocaleDateString() })() : '-'}</td>
                         <td className="p-4 text-right text-zinc-300 font-mono">{fmt(i.gross_amount||0)}</td>
@@ -728,10 +849,15 @@ export default function Dashboard() {
                         </td>
                       </tr>
                     ))}
-                    {incomeSources.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-zinc-600">No paychecks recorded.</td></tr>}
+                    {viewFiltered.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-zinc-600">No paychecks in this range.</td></tr>}
                   </tbody>
                 </table>
               </div>
+              {incomeDisplayLimit !== 'all' && displayedIncome.length < viewFiltered.length && (
+                <div className="flex justify-center">
+                  <button onClick={() => setIncomeDisplayLimit(prev => (prev as number) + 25)} className="btn-secondary">Show More</button>
+                </div>
+              )}
             </div>
             )
           })()}
