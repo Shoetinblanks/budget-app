@@ -680,6 +680,17 @@ export default function Dashboard() {
                         <td className="p-4">
                           <p className="font-medium text-zinc-200">{e.name} {e.fixed && <CheckCircle2 className="inline w-3 h-3 text-blue-500 ml-1" />}</p>
                           {e.notes && <p className="text-xs text-zinc-500 mt-0.5 truncate max-w-[200px]">{e.notes}</p>}
+                          {e.due_date && (() => {
+                            const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+                            const ord = (n: string) => { const d = parseInt(n); return `${d}${d===1?'st':d===2?'nd':d===3?'rd':'th'}` }
+                            const freq = e.frequency || 'monthly'
+                            let label = ''
+                            if (freq === 'monthly') label = `Due: ${ord(e.due_date)}`
+                            else if (freq === 'bi-weekly') { const [d1,d2] = e.due_date.split(','); label = `Due: ${d1?ord(d1):'?'} & ${d2?ord(d2):'?'}` }
+                            else if (freq === 'yearly') { const [m,d] = e.due_date.split('-'); label = m&&d ? `Due: ${MONTHS[parseInt(m)-1]} ${parseInt(d)}` : '' }
+                            else if (freq === 'bi-yearly') { const [p1,p2] = e.due_date.split('|'); const fmt1 = (p:string) => { const [m,d]=p.split('-'); return m&&d?`${MONTHS[parseInt(m)-1]} ${parseInt(d)}`:'?' }; label = `Due: ${fmt1(p1||'')} & ${fmt1(p2||'')}` }
+                            return label ? <p className="text-[10px] text-zinc-600 mt-0.5">{label}</p> : null
+                          })()}
                         </td>
                         <td className="p-4"><span className="px-2 py-1 bg-zinc-800 rounded-md text-[10px] uppercase text-zinc-400">{e.category}</span></td>
                         <td className="p-4 text-center text-zinc-500 text-xs capitalize">{e.frequency || 'Monthly'}</td>
@@ -1187,8 +1198,15 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <label className="text-xs font-bold text-zinc-500 uppercase">Frequency</label>
-                  <select value={expenseForm.frequency} onChange={e=>setExpenseForm({...expenseForm, frequency: e.target.value})} className="input-field capitalize">
-                    {['daily','weekly','bi-weekly','monthly','yearly'].map(f=><option key={f} value={f}>{f}</option>)}
+                  <select value={expenseForm.frequency} onChange={e=>setExpenseForm({...expenseForm, frequency: e.target.value, due_date: ''})} className="input-field capitalize">
+                    {[
+                      { value: 'daily',     label: 'Daily' },
+                      { value: 'weekly',    label: 'Weekly' },
+                      { value: 'bi-weekly', label: 'Bi-Weekly (2x/month)' },
+                      { value: 'monthly',   label: 'Monthly' },
+                      { value: 'bi-yearly', label: 'Bi-Yearly (every 6 months)' },
+                      { value: 'yearly',    label: 'Yearly' },
+                    ].map(f=><option key={f.value} value={f.value}>{f.label}</option>)}
                   </select>
                 </div>
               </div>
@@ -1230,6 +1248,112 @@ export default function Dashboard() {
 
               {/* Account */}
               <div><label className="text-xs font-bold text-zinc-500 uppercase">Account</label><select value={expenseForm.account_code} onChange={e=>setExpenseForm({...expenseForm, account_code: e.target.value})} className="input-field">{accounts.map(a=><option key={a.id} value={a.account_code}>{a.name} ({a.account_code})</option>)}</select></div>
+
+              {/* Dynamic Due Date */}
+              {(() => {
+                const freq = expenseForm.frequency
+                const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+                const days = Array.from({length:31},(_,i)=>i+1)
+
+                if (freq === 'monthly') {
+                  return (
+                    <div>
+                      <label className="text-xs font-bold text-zinc-500 uppercase">Due Day of Month</label>
+                      <select value={expenseForm.due_date} onChange={e=>setExpenseForm({...expenseForm, due_date: e.target.value})} className="input-field">
+                        <option value="">— Select day —</option>
+                        {days.map(d=><option key={d} value={String(d)}>{d}{d===1?'st':d===2?'nd':d===3?'rd':'th'}</option>)}
+                      </select>
+                    </div>
+                  )
+                }
+
+                if (freq === 'bi-weekly') {
+                  const parts = expenseForm.due_date.split(',')
+                  const d1 = parts[0]||''
+                  const d2 = parts[1]||''
+                  return (
+                    <div>
+                      <label className="text-xs font-bold text-zinc-500 uppercase">Due Days of Month (2x)</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-[10px] text-zinc-500 mb-1">1st occurrence</p>
+                          <select value={d1} onChange={e=>setExpenseForm({...expenseForm, due_date: `${e.target.value},${d2}`})} className="input-field">
+                            <option value="">— Day —</option>
+                            {days.map(d=><option key={d} value={String(d)}>{d}{d===1?'st':d===2?'nd':d===3?'rd':'th'}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-zinc-500 mb-1">2nd occurrence</p>
+                          <select value={d2} onChange={e=>setExpenseForm({...expenseForm, due_date: `${d1},${e.target.value}`})} className="input-field">
+                            <option value="">— Day —</option>
+                            {days.map(d=><option key={d} value={String(d)}>{d}{d===1?'st':d===2?'nd':d===3?'rd':'th'}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
+
+                if (freq === 'yearly') {
+                  const parts = expenseForm.due_date.split('-')
+                  const m = parts[0]||''
+                  const d = parts[1]||''
+                  return (
+                    <div>
+                      <label className="text-xs font-bold text-zinc-500 uppercase">Annual Due Date</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <select value={m} onChange={e=>setExpenseForm({...expenseForm, due_date: `${e.target.value}-${d}`})} className="input-field">
+                          <option value="">— Month —</option>
+                          {MONTHS.map((mo,i)=><option key={i} value={String(i+1).padStart(2,'0')}>{mo}</option>)}
+                        </select>
+                        <select value={d} onChange={e=>setExpenseForm({...expenseForm, due_date: `${m}-${e.target.value}`})} className="input-field">
+                          <option value="">— Day —</option>
+                          {days.map(dy=><option key={dy} value={String(dy).padStart(2,'0')}>{dy}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  )
+                }
+
+                if (freq === 'bi-yearly') {
+                  const parts = expenseForm.due_date.split('|')
+                  const [m1='',d1=''] = (parts[0]||'').split('-')
+                  const [m2='',d2=''] = (parts[1]||'').split('-')
+                  const update = (newM1: string,newD1: string,newM2: string,newD2: string) =>
+                    setExpenseForm({...expenseForm, due_date: `${newM1}-${newD1}|${newM2}-${newD2}`})
+                  return (
+                    <div>
+                      <label className="text-xs font-bold text-zinc-500 uppercase">Due Dates (2x per year)</label>
+                      <div className="space-y-2">
+                        <p className="text-[10px] text-zinc-500">1st occurrence</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <select value={m1} onChange={e=>update(e.target.value,d1,m2,d2)} className="input-field">
+                            <option value="">— Month —</option>
+                            {MONTHS.map((mo,i)=><option key={i} value={String(i+1).padStart(2,'0')}>{mo}</option>)}
+                          </select>
+                          <select value={d1} onChange={e=>update(m1,e.target.value,m2,d2)} className="input-field">
+                            <option value="">— Day —</option>
+                            {days.map(dy=><option key={dy} value={String(dy).padStart(2,'0')}>{dy}</option>)}
+                          </select>
+                        </div>
+                        <p className="text-[10px] text-zinc-500">2nd occurrence</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <select value={m2} onChange={e=>update(m1,d1,e.target.value,d2)} className="input-field">
+                            <option value="">— Month —</option>
+                            {MONTHS.map((mo,i)=><option key={i} value={String(i+1).padStart(2,'0')}>{mo}</option>)}
+                          </select>
+                          <select value={d2} onChange={e=>update(m1,d1,m2,e.target.value)} className="input-field">
+                            <option value="">— Day —</option>
+                            {days.map(dy=><option key={dy} value={String(dy).padStart(2,'0')}>{dy}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
+
+                return null // daily / weekly — no due date needed
+              })()}
 
               {/* Notes */}
               <div>

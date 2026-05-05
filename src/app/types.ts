@@ -26,6 +26,7 @@ export const calcAmounts = (amount: number, freq: string) => {
     case 'weekly': monthly = a * 4.33; break
     case 'bi-weekly': monthly = a * 2.17; break
     case 'monthly': monthly = a; break
+    case 'bi-yearly': monthly = a / 6; break
     case 'yearly': monthly = a / 12; break
     default: monthly = a
   }
@@ -38,6 +39,7 @@ export const getBaseAmount = (monthly: number, freq: string) => {
     case 'weekly': return +(monthly / 4.33).toFixed(2)
     case 'bi-weekly': return +(monthly / 2.17).toFixed(2)
     case 'monthly': return +monthly.toFixed(2)
+    case 'bi-yearly': return +(monthly * 6).toFixed(2)
     case 'yearly': return +(monthly * 12).toFixed(2)
     default: return +monthly.toFixed(2)
   }
