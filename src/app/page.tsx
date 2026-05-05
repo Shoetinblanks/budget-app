@@ -73,6 +73,7 @@ export default function Dashboard() {
   const [incomeViewStart, setIncomeViewStart] = useState('')
   const [incomeViewEnd, setIncomeViewEnd] = useState('')
   const [incomeDisplayLimit, setIncomeDisplayLimit] = useState<number | 'all'>(50)
+  const [summaryPreset, setSummaryPreset] = useState<'month' | '30d' | '90d' | 'year' | 'lastyear' | 'all'>('month')
   const [accountForm, setAccountForm] = useState<Account>({ name: '', account_code: '', type: 'checking' })
 
   // Import State
@@ -486,20 +487,6 @@ export default function Dashboard() {
     return acc
   }, {} as Record<string, number>)
 
-  // This-month actual spending (negative transactions = spending)
-  const now = new Date()
-  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-  const thisMonthSpending = transactions.filter(t => t.transaction_date >= monthStart && t.amount < 0)
-  const thisMonthActualByCategory = thisMonthSpending.reduce((acc, t) => {
-    acc[t.category] = (acc[t.category] || 0) + Math.abs(t.amount)
-    return acc
-  }, {} as Record<string, number>)
-  const totalActualThisMonth = Object.values(thisMonthActualByCategory).reduce((a, b) => a + b, 0)
-
-  const budgetVsActualData = Object.keys(categoryDataMap).map(cat => ({
-    name: cat, Budgeted: categoryDataMap[cat], Actual: thisMonthActualByCategory[cat] || 0
-  }))
-
   const navTabs = [
     { id: 'transactions', label: 'Transactions', icon: ArrowUpDown },
     { id: 'expenses', label: 'Expenses', icon: Receipt },
@@ -669,7 +656,11 @@ export default function Dashboard() {
               return expenseSortDir === 'asc' ? cmp : -cmp
             })
             return (
-            <div className="animate-in fade-in">
+            <div className="animate-in fade-in space-y-3">
+              <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+                <CheckCircle2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                <span>Fixed bill — used in emergency fund math</span>
+              </div>
               <div className="overflow-x-auto rounded-xl border border-zinc-800/50">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-zinc-950/50 border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
@@ -939,8 +930,73 @@ export default function Dashboard() {
           )}
 
           {/* SUMMARY */}
-          {activeTab === 'summary' && (
+          {activeTab === 'summary' && (() => {
+            const now2 = new Date()
+            const pad = (n: number) => String(n).padStart(2, '0')
+            let sumStart = ''
+            let sumEnd = ''
+            let periodLabel = ''
+            if (summaryPreset === 'month') {
+              sumStart = `${now2.getFullYear()}-${pad(now2.getMonth()+1)}-01`
+              periodLabel = now2.toLocaleString('default', { month: 'long', year: 'numeric' })
+            } else if (summaryPreset === '30d') {
+              const cut = new Date(); cut.setDate(cut.getDate()-30)
+              sumStart = `${cut.getFullYear()}-${pad(cut.getMonth()+1)}-${pad(cut.getDate())}`
+              periodLabel = 'Last 30 Days'
+            } else if (summaryPreset === '90d') {
+              const cut = new Date(); cut.setDate(cut.getDate()-90)
+              sumStart = `${cut.getFullYear()}-${pad(cut.getMonth()+1)}-${pad(cut.getDate())}`
+              periodLabel = 'Last 90 Days'
+            } else if (summaryPreset === 'year') {
+              sumStart = `${now2.getFullYear()}-01-01`
+              periodLabel = `This Year (${now2.getFullYear()})`
+            } else if (summaryPreset === 'lastyear') {
+              sumStart = `${now2.getFullYear()-1}-01-01`
+              sumEnd   = `${now2.getFullYear()-1}-12-31`
+              periodLabel = `Last Year (${now2.getFullYear()-1})`
+            } else {
+              periodLabel = 'All Time'
+            }
+
+            const periodSpending = transactions.filter(t => {
+              if (t.amount >= 0) return false
+              if (sumStart && t.transaction_date < sumStart) return false
+              if (sumEnd   && t.transaction_date > sumEnd)   return false
+              return true
+            })
+            const actualByCategory = periodSpending.reduce((acc, t) => {
+              acc[t.category] = (acc[t.category] || 0) + Math.abs(t.amount)
+              return acc
+            }, {} as Record<string, number>)
+            const totalActual = Object.values(actualByCategory).reduce((a, b) => a + b, 0)
+            const bvAData = Object.keys(categoryDataMap).map(cat => ({
+              name: cat, Budgeted: categoryDataMap[cat], Actual: actualByCategory[cat] || 0
+            }))
+
+            const summaryPresets: { key: typeof summaryPreset; label: string }[] = [
+              { key: 'month',    label: 'This Month' },
+              { key: '30d',      label: 'Last 30 Days' },
+              { key: '90d',      label: 'Last 90 Days' },
+              { key: 'year',     label: 'This Year' },
+              { key: 'lastyear', label: 'Last Year' },
+              { key: 'all',      label: 'All Time' },
+            ]
+
+            return (
             <div className="animate-in fade-in space-y-8">
+              {/* Preset toolbar */}
+              <div className="flex flex-wrap gap-2 items-center">
+                {summaryPresets.map(p => (
+                  <button key={p.key} onClick={() => setSummaryPreset(p.key)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                      summaryPreset === p.key
+                        ? 'bg-blue-500 text-white border-blue-500'
+                        : 'bg-transparent text-zinc-400 border-zinc-700 hover:border-zinc-500 hover:text-zinc-200'
+                    }`}>{p.label}</button>
+                ))}
+                <span className="ml-auto text-xs text-zinc-500 font-medium">{periodLabel}</span>
+              </div>
+
               {/* Top-level KPIs */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-zinc-800 border border-zinc-700 p-5 rounded-2xl">
@@ -954,16 +1010,16 @@ export default function Dashboard() {
                   <p className="text-zinc-500 text-xs mt-1">{expenses.length} expenses</p>
                 </div>
                 <div className="bg-zinc-800 border border-zinc-700 p-5 rounded-2xl">
-                  <p className="text-zinc-400 text-xs uppercase font-bold tracking-widest mb-1">Spent This Month</p>
-                  <p className={`text-2xl font-bold font-mono ${totalActualThisMonth > totalMonthly ? 'text-red-400' : 'text-emerald-400'}`}>{fmt(totalActualThisMonth)}</p>
-                  <p className="text-zinc-500 text-xs mt-1">{thisMonthSpending.length} transactions</p>
+                  <p className="text-zinc-400 text-xs uppercase font-bold tracking-widest mb-1">Spent — {periodLabel}</p>
+                  <p className={`text-2xl font-bold font-mono ${totalActual > totalMonthly ? 'text-red-400' : 'text-emerald-400'}`}>{fmt(totalActual)}</p>
+                  <p className="text-zinc-500 text-xs mt-1">{periodSpending.length} transactions</p>
                 </div>
                 <div className="bg-zinc-800 border border-zinc-700 p-5 rounded-2xl">
                   <p className="text-zinc-400 text-xs uppercase font-bold tracking-widest mb-1">Remaining Budget</p>
-                  {(() => { const rem = totalMonthly - totalActualThisMonth; return (
+                  {(() => { const rem = totalMonthly - totalActual; return (
                     <>
                       <p className={`text-2xl font-bold font-mono ${rem >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{rem >= 0 ? '' : '-'}{fmt(Math.abs(rem))}</p>
-                      <p className="text-zinc-500 text-xs mt-1">{totalMonthly > 0 ? Math.round((totalActualThisMonth / totalMonthly) * 100) : 0}% used</p>
+                      <p className="text-zinc-500 text-xs mt-1">{totalMonthly > 0 ? Math.round((totalActual / totalMonthly) * 100) : 0}% used</p>
                     </>
                   )})()}
                 </div>
@@ -972,13 +1028,13 @@ export default function Dashboard() {
               {/* Per-Category Budget vs Actual */}
               <div className="bg-zinc-800 border border-zinc-700 rounded-2xl overflow-hidden">
                 <div className="p-4 border-b border-zinc-700">
-                  <h3 className="font-bold text-white">Category Breakdown — This Month</h3>
+                  <h3 className="font-bold text-white">Category Breakdown — {periodLabel}</h3>
                   <p className="text-zinc-400 text-xs mt-0.5">Budget (from expenses) vs actual spending (from transactions)</p>
                 </div>
                 <div className="divide-y divide-zinc-700/60">
-                  {categories.filter(c => (categoryDataMap[c.name] || 0) > 0 || (thisMonthActualByCategory[c.name] || 0) > 0).map(c => {
+                  {categories.filter(c => (categoryDataMap[c.name] || 0) > 0 || (actualByCategory[c.name] || 0) > 0).map(c => {
                     const budgeted = categoryDataMap[c.name] || 0
-                    const actual = thisMonthActualByCategory[c.name] || 0
+                    const actual = actualByCategory[c.name] || 0
                     const pct = budgeted > 0 ? Math.min((actual / budgeted) * 100, 100) : 100
                     const over = actual > budgeted && budgeted > 0
                     const barColor = pct < 80 ? '#10b981' : pct < 100 ? '#f59e0b' : '#f43f5e'
@@ -1013,7 +1069,7 @@ export default function Dashboard() {
                       </div>
                     )
                   })}
-                  {categories.filter(c => (categoryDataMap[c.name] || 0) > 0 || (thisMonthActualByCategory[c.name] || 0) > 0).length === 0 && (
+                  {categories.filter(c => (categoryDataMap[c.name] || 0) > 0 || (actualByCategory[c.name] || 0) > 0).length === 0 && (
                     <p className="p-8 text-center text-zinc-500">No expenses or transactions yet.</p>
                   )}
                 </div>
@@ -1021,10 +1077,10 @@ export default function Dashboard() {
 
               {/* Budget vs Actual Chart */}
               <div className="bg-zinc-800 border border-zinc-700 p-6 rounded-2xl">
-                <h3 className="text-base font-bold text-white mb-5">Budget vs Actual — This Month</h3>
+                <h3 className="text-base font-bold text-white mb-5">Budget vs Actual — {periodLabel}</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={budgetVsActualData}>
+                    <BarChart data={bvAData}>
                       <XAxis dataKey="name" stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} />
                       <YAxis stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
                       <Tooltip cursor={{ fill: '#3f3f46', opacity: 0.5 }} contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46', borderRadius: '12px' }} itemStyle={{ color: '#fff' }} />
@@ -1050,7 +1106,8 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
-          )}
+            )
+          })()}
         </main>
       </div>
 
