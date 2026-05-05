@@ -337,9 +337,17 @@ export default function Dashboard() {
 
   const handleConfirmPasteImport = async () => {
     if (!user || incomePastePreview.length === 0) return
-    const toInsert = incomePastePreview.map(r => ({ ...r, user_id: user.id }))
-    const { error } = await supabase.from('income_sources').insert(toInsert)
+    // Deduplicate against existing income entries by pay_date
+    const existingDates = new Set(incomeSources.map(i => i.pay_date || ''))
+    const toInsert = incomePastePreview.filter(r => !existingDates.has(r.pay_date || ''))
+    const dupeCount = incomePastePreview.length - toInsert.length
+    if (toInsert.length === 0) {
+      alert(`All ${dupeCount} paychecks already exist. Nothing imported.`)
+      return
+    }
+    const { error } = await supabase.from('income_sources').insert(toInsert.map(r => ({ ...r, user_id: user.id })))
     if (!error) {
+      if (dupeCount > 0) alert(`Imported ${toInsert.length} paychecks. ${dupeCount} duplicates skipped.`)
       setIsIncomeModalOpen(false)
       setIncomePasteText('')
       setIncomePastePreview([])
@@ -438,10 +446,18 @@ export default function Dashboard() {
   
   const displayedTxs = txDisplayLimit === 'all' ? filteredTransactions : filteredTransactions.slice(0, txDisplayLimit)
 
-  // Averages for Income
-  const numIncomeEntries = incomeSources.length || 1
-  const totalGrossIncome = incomeSources.reduce((sum, i) => sum + Number(i.gross_amount || 0), 0)
-  const totalNetIncome = incomeSources.reduce((sum, i) => sum + Number(i.net_amount || 0), 0)
+  // Averages for Income (windowed by profile setting)
+  const incomeAvgMonths = profile?.income_avg_months || 12
+  const incomeWindowCutoff = new Date()
+  incomeWindowCutoff.setMonth(incomeWindowCutoff.getMonth() - incomeAvgMonths)
+  const windowedIncome = incomeSources.filter(i => {
+    if (!i.pay_date) return false
+    const [y, m, d] = i.pay_date.split('-')
+    return new Date(+y, +m - 1, +d) >= incomeWindowCutoff
+  })
+  const numIncomeEntries = windowedIncome.length || 1
+  const totalGrossIncome = windowedIncome.reduce((sum, i) => sum + Number(i.gross_amount || 0), 0)
+  const totalNetIncome = windowedIncome.reduce((sum, i) => sum + Number(i.net_amount || 0), 0)
   const avgGross = totalGrossIncome / numIncomeEntries
   const avgNet = totalNetIncome / numIncomeEntries
 
@@ -681,10 +697,12 @@ export default function Dashboard() {
                 <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
                   <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-1">Average Gross</p>
                   <p className="text-3xl font-bold text-white font-mono">{fmt(avgGross)}</p>
+                  <p className="text-zinc-600 text-xs mt-2">{windowedIncome.length} paychecks · last {incomeAvgMonths} months</p>
                 </div>
                 <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
                   <p className="text-blue-500/70 text-xs uppercase font-bold tracking-widest mb-1">Average Net (Take Home)</p>
                   <p className="text-3xl font-bold text-blue-400 font-mono">{fmt(avgNet)}</p>
+                  <p className="text-zinc-600 text-xs mt-2">{windowedIncome.length} paychecks · last {incomeAvgMonths} months</p>
                 </div>
               </div>
 

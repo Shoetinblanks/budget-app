@@ -22,6 +22,7 @@ export default function AccountPage() {
   const [activeSection, setActiveSection] = useState('profile')
   const [friendlyName, setFriendlyName] = useState('')
   const [roundUpTarget, setRoundUpTarget] = useState<number>(10)
+  const [incomeAvgMonths, setIncomeAvgMonths] = useState<number>(12)
   const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([])
   const [newEmail, setNewEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -54,6 +55,7 @@ export default function AccountPage() {
       if (profile) {
         setFriendlyName(profile.friendly_name || '')
         setRoundUpTarget(profile.round_up_target || 10)
+        setIncomeAvgMonths(profile.income_avg_months || 12)
       }
       if (incomes) {
         setIncomeSources(incomes)
@@ -71,6 +73,7 @@ export default function AccountPage() {
       id: user?.id,
       friendly_name: friendlyName,
       round_up_target: roundUpTarget,
+      income_avg_months: incomeAvgMonths,
     })
     if (error) setMessage({ type: 'error', text: error.message })
     else setMessage({ type: 'success', text: 'Profile updated!' })
@@ -337,6 +340,7 @@ export default function AccountPage() {
         {activeSection === 'defaults' && (
           <section className="space-y-6 animate-in fade-in duration-300">
             <h2 className="text-2xl font-bold text-white mb-6">System Defaults</h2>
+
             <div>
               <label className="block text-sm font-medium text-zinc-400 mb-2">Rounding Target ($)</label>
               <input 
@@ -347,6 +351,22 @@ export default function AccountPage() {
               />
               <p className="mt-2 text-sm text-zinc-500">How would you like your direct deposits rounded up?</p>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-2">Income Average Window (months)</label>
+              <input 
+                type="number"
+                min={1}
+                max={120}
+                value={incomeAvgMonths}
+                onChange={e => setIncomeAvgMonths(Math.max(1, Number(e.target.value)))}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="mt-2 text-sm text-zinc-500">
+                Only paychecks from the last <strong className="text-zinc-300">{incomeAvgMonths} months</strong> will be used to calculate your income averages on the dashboard. Older paychecks are kept in the database for records.
+              </p>
+            </div>
+
             <button 
               onClick={handleSaveProfile}
               disabled={saving}

@@ -1,4 +1,4 @@
-export interface Profile { friendly_name?: string; round_up_target?: number }
+export interface Profile { friendly_name?: string; round_up_target?: number; income_avg_months?: number }
 export interface Category { id?: string; user_id?: string; name: string; color: string }
 export interface Account { id?: string; user_id?: string; name: string; account_code: string; type?: string }
 export interface Expense { id?: string; user_id?: string; name: string; monthly_amount: number; bi_weekly_amount: number; category: string; fixed: boolean; account_code: string; due_date: string; frequency?: string; notes?: string }
