@@ -1,7 +1,7 @@
 export interface Profile { friendly_name?: string; round_up_target?: number }
 export interface Category { id?: string; user_id?: string; name: string; color: string }
 export interface Account { id?: string; user_id?: string; name: string; account_code: string; type?: string }
-export interface Expense { id?: string; user_id?: string; name: string; monthly_amount: number; bi_weekly_amount: number; category: string; fixed: boolean; account_code: string; due_date: string; frequency?: string }
+export interface Expense { id?: string; user_id?: string; name: string; monthly_amount: number; bi_weekly_amount: number; category: string; fixed: boolean; account_code: string; due_date: string; frequency?: string; notes?: string }
 export interface Transaction { id?: string; user_id?: string; transaction_date: string; post_date?: string; description: string; category: string; type?: string; amount: number; memo?: string }
 export interface IncomeSource { id?: string; user_id?: string; employer_name: string; pay_frequency: string; pay_date?: string; net_amount?: number; gross_amount?: number; taxes?: number; deductions?: number }
 export interface CategoryRule { id?: string; user_id?: string; merchant_pattern: string; category: string }

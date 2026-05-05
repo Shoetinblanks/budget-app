@@ -50,12 +50,23 @@ export default function Dashboard() {
   const [editingIncome, setEditingIncome] = useState<IncomeSource | null>(null)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
 
-  const [expenseForm, setExpenseForm] = useState<{name: string, amount: number, frequency: string, category: string, fixed: boolean, account_code: string, due_date: string}>({
-    name: '', amount: 0, frequency: 'monthly', category: 'General', fixed: true, account_code: '', due_date: ''
+  const [expenseForm, setExpenseForm] = useState<{name: string, amount: number, frequency: string, category: string, fixed: boolean, account_code: string, due_date: string, notes: string}>({
+    name: '', amount: 0, frequency: 'monthly', category: 'General', fixed: true, account_code: '', due_date: '', notes: ''
   })
+  const [expenseAmountStr, setExpenseAmountStr] = useState('')
+  const [showNewCategoryInExpense, setShowNewCategoryInExpense] = useState(false)
+  const [newCatName, setNewCatName] = useState('')
+  const [newCatColor, setNewCatColor] = useState(PRESET_COLORS[0])
   const [ruleForm, setRuleForm] = useState<CategoryRule>({ merchant_pattern: '', category: 'General' })
   const [categoryForm, setCategoryForm] = useState<Category>({ name: '', color: PRESET_COLORS[0] })
   const [incomeForm, setIncomeForm] = useState<IncomeSource>({ employer_name: '', pay_date: '', pay_frequency: 'bi-weekly', gross_amount: 0, net_amount: 0 })
+  const [incomeSortKey, setIncomeSortKey] = useState<'pay_date' | 'gross_amount' | 'net_amount'>('pay_date')
+  const [incomeSortDir, setIncomeSortDir] = useState<'asc' | 'desc'>('desc')
+  const [incomeGrossStr, setIncomeGrossStr] = useState('')
+  const [incomeNetStr, setIncomeNetStr] = useState('')
+  const [incomeImportMode, setIncomeImportMode] = useState<'form' | 'paste'>('form')
+  const [incomePasteText, setIncomePasteText] = useState('')
+  const [incomePastePreview, setIncomePastePreview] = useState<IncomeSource[]>([])
   const [accountForm, setAccountForm] = useState<Account>({ name: '', account_code: '', type: 'checking' })
 
   // Import State
@@ -236,12 +247,14 @@ export default function Dashboard() {
   const handleSaveExpense = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user) return
-    const { monthly, biWeekly } = calcAmounts(expenseForm.amount, expenseForm.frequency)
+    const amt = parseCurrencyInput(expenseAmountStr)
+    const { monthly, biWeekly } = calcAmounts(amt, expenseForm.frequency)
     const expenseData: Expense = { 
       user_id: user.id, name: expenseForm.name, frequency: expenseForm.frequency,
       monthly_amount: monthly, bi_weekly_amount: biWeekly, 
       category: expenseForm.category, fixed: expenseForm.fixed, 
-      account_code: expenseForm.account_code, due_date: expenseForm.due_date 
+      account_code: expenseForm.account_code, due_date: expenseForm.due_date,
+      notes: expenseForm.notes || ''
     }
     const { error } = editingExpense?.id 
       ? await supabase.from('expenses').update(expenseData).eq('id', editingExpense.id)
@@ -253,12 +266,34 @@ export default function Dashboard() {
     } else alert('Error: ' + error.message)
   }
 
+  const handleSaveNewCategoryInline = async () => {
+    if (!user || !newCatName.trim()) return
+    const { data, error } = await supabase.from('categories').insert({ name: newCatName.trim(), color: newCatColor, user_id: user.id }).select().single()
+    if (!error && data) {
+      setCategories(prev => [...prev, data])
+      setExpenseForm(f => ({ ...f, category: data.name }))
+      setNewCatName('')
+      setNewCatColor(PRESET_COLORS[0])
+      setShowNewCategoryInExpense(false)
+    } else alert('Error: ' + error?.message)
+  }
+
   // --- Income ---
+
+  const parseCurrencyInput = (val: string): number => {
+    return parseFloat(val.replace(/[$,]/g, '')) || 0
+  }
 
   const handleSaveIncome = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user) return
-    const incData = { ...incomeForm, user_id: user.id }
+    const incData = {
+      ...incomeForm,
+      gross_amount: parseCurrencyInput(incomeGrossStr),
+      net_amount: parseCurrencyInput(incomeNetStr),
+      employer_name: '',
+      user_id: user.id
+    }
     const { error } = editingIncome?.id
       ? await supabase.from('income_sources').update(incData).eq('id', editingIncome.id)
       : await supabase.from('income_sources').insert(incData)
@@ -266,6 +301,55 @@ export default function Dashboard() {
       setIsIncomeModalOpen(false)
       loadDashboardData()
     } else alert('Error: ' + error.message)
+  }
+
+  const handlePasteImport = async () => {
+    if (!user) return
+    const lines = incomePasteText.split('\n').map(l => l.trim()).filter(Boolean)
+    const results: IncomeSource[] = []
+    let i = 0
+    while (i < lines.length) {
+      const dateMatch = lines[i].match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),?\s+(\d{4})$/i)
+      if (dateMatch) {
+        const dateStr = lines[i]
+        let gross = 0, net = 0
+        i++
+        while (i < lines.length) {
+          const nextDateMatch = lines[i].match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),?\s+(\d{4})$/i)
+          if (nextDateMatch) break
+          if (lines[i].toLowerCase() === 'gross' && i + 1 < lines.length) {
+            gross = parseFloat(lines[i + 1].replace(/[$,]/g, '')) || 0
+            i += 2; continue
+          }
+          if ((lines[i].toLowerCase() === 'take home' || lines[i].toLowerCase() === 'net') && i + 1 < lines.length) {
+            net = parseFloat(lines[i + 1].replace(/[$,]/g, '')) || 0
+            i += 2; continue
+          }
+          i++
+        }
+        const d = new Date(dateStr)
+        const localDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+        results.push({ employer_name: '', pay_frequency: 'bi-weekly', pay_date: localDate, gross_amount: gross, net_amount: net })
+      } else { i++ }
+    }
+    setIncomePastePreview(results)
+  }
+
+  const handleConfirmPasteImport = async () => {
+    if (!user || incomePastePreview.length === 0) return
+    const toInsert = incomePastePreview.map(r => ({ ...r, user_id: user.id }))
+    const { error } = await supabase.from('income_sources').insert(toInsert)
+    if (!error) {
+      setIsIncomeModalOpen(false)
+      setIncomePasteText('')
+      setIncomePastePreview([])
+      loadDashboardData()
+    } else alert('Error: ' + error.message)
+  }
+
+  const handleIncomeSort = (key: 'pay_date' | 'gross_amount' | 'net_amount') => {
+    if (incomeSortKey === key) setIncomeSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setIncomeSortKey(key); setIncomeSortDir('desc') }
   }
 
   // --- Accounts ---
@@ -410,7 +494,7 @@ export default function Dashboard() {
         <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold text-white tracking-tight">
-              Welcome back, <span className="text-blue-500">{profile?.friendly_name || user?.email}</span>
+              <span className="text-blue-500">{profile?.friendly_name || user?.email}</span>
             </h1>
           </div>
           <div className="flex gap-3">
@@ -425,12 +509,12 @@ export default function Dashboard() {
               </>
             )}
             {activeTab === 'expenses' && (
-              <button onClick={() => { setEditingExpense(null); setExpenseForm({ name: '', amount: 0, frequency: 'monthly', category: categories[0]?.name || 'General', fixed: true, account_code: accounts[0]?.account_code || '', due_date: '' }); setIsExpenseModalOpen(true) }} className="btn-primary">
+              <button onClick={() => { setEditingExpense(null); setExpenseForm({ name: '', amount: 0, frequency: 'monthly', category: categories[0]?.name || 'General', fixed: true, account_code: accounts[0]?.account_code || '', due_date: '', notes: '' }); setExpenseAmountStr(''); setShowNewCategoryInExpense(false); setIsExpenseModalOpen(true) }} className="btn-primary">
                 <Plus className="w-5 h-5" /> Add Expense
               </button>
             )}
             {activeTab === 'income' && (
-              <button onClick={() => { setEditingIncome(null); setIncomeForm({ employer_name: '', pay_date: new Date().toISOString().split('T')[0], pay_frequency: 'bi-weekly', gross_amount: 0, net_amount: 0 }); setIsIncomeModalOpen(true) }} className="btn-primary">
+              <button onClick={() => { setEditingIncome(null); setIncomeForm({ employer_name: '', pay_date: '', pay_frequency: 'bi-weekly', gross_amount: 0, net_amount: 0 }); setIncomeGrossStr(''); setIncomeNetStr(''); setIncomeImportMode('form'); setIncomePasteText(''); setIncomePastePreview([]); setIsIncomeModalOpen(true) }} className="btn-primary">
                 <Plus className="w-5 h-5" /> Add Paycheck
               </button>
             )}
@@ -554,14 +638,17 @@ export default function Dashboard() {
                   <tbody className="divide-y divide-zinc-800/50">
                     {expenses.map((e) => (
                       <tr key={e.id} className="hover:bg-white/[0.02]">
-                        <td className="p-4 font-medium text-zinc-200">{e.name} {e.fixed && <CheckCircle2 className="inline w-3 h-3 text-blue-500 ml-1" />}</td>
+                        <td className="p-4">
+                          <p className="font-medium text-zinc-200">{e.name} {e.fixed && <CheckCircle2 className="inline w-3 h-3 text-blue-500 ml-1" />}</p>
+                          {e.notes && <p className="text-xs text-zinc-500 mt-0.5 truncate max-w-[200px]">{e.notes}</p>}
+                        </td>
                         <td className="p-4"><span className="px-2 py-1 bg-zinc-800 rounded-md text-[10px] uppercase text-zinc-400">{e.category}</span></td>
                         <td className="p-4 text-center text-zinc-500 text-xs capitalize">{e.frequency || 'Monthly'}</td>
                         <td className="p-4 text-right text-zinc-300">{fmt(e.monthly_amount)}</td>
                         <td className="p-4 text-right text-blue-500 font-mono">{fmt(e.bi_weekly_amount)}</td>
                         <td className="p-4 text-center text-zinc-500 font-mono text-xs">{e.account_code}</td>
                         <td className="p-4 text-right">
-                          <button onClick={() => { setEditingExpense(e); setExpenseForm({name: e.name, amount: getBaseAmount(e.monthly_amount, e.frequency||'monthly'), frequency: e.frequency||'monthly', category: e.category, fixed: e.fixed, account_code: e.account_code, due_date: e.due_date||''}); setIsExpenseModalOpen(true) }} className="btn-icon"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => { setEditingExpense(e); const baseAmt = getBaseAmount(e.monthly_amount, e.frequency||'monthly'); setExpenseForm({name: e.name, amount: baseAmt, frequency: e.frequency||'monthly', category: e.category, fixed: e.fixed, account_code: e.account_code, due_date: e.due_date||'', notes: e.notes||''}); setExpenseAmountStr(baseAmt.toFixed(2)); setShowNewCategoryInExpense(false); setIsExpenseModalOpen(true) }} className="btn-icon"><Edit2 className="w-4 h-4" /></button>
                           <button onClick={() => del('expenses', e.id!)} className="btn-icon text-red-400 hover:text-red-300"><Trash2 className="w-4 h-4" /></button>
                         </td>
                       </tr>
@@ -573,7 +660,22 @@ export default function Dashboard() {
           )}
 
           {/* INCOME */}
-          {activeTab === 'income' && (
+          {activeTab === 'income' && (() => {
+            const sortedIncome = [...incomeSources].sort((a, b) => {
+              let av: number | string = a[incomeSortKey] ?? 0
+              let bv: number | string = b[incomeSortKey] ?? 0
+              if (incomeSortKey === 'pay_date') { av = String(av); bv = String(bv) }
+              else { av = Number(av); bv = Number(bv) }
+              if (av < bv) return incomeSortDir === 'asc' ? -1 : 1
+              if (av > bv) return incomeSortDir === 'asc' ? 1 : -1
+              return 0
+            })
+            const SortIcon = ({ col }: { col: typeof incomeSortKey }) => (
+              <span className={`ml-1 text-[10px] ${incomeSortKey === col ? 'text-blue-400' : 'text-zinc-600'}`}>
+                {incomeSortKey === col ? (incomeSortDir === 'asc' ? '▲' : '▼') : '⇅'}
+              </span>
+            )
+            return (
             <div className="animate-in fade-in space-y-8">
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
@@ -581,35 +683,40 @@ export default function Dashboard() {
                   <p className="text-3xl font-bold text-white font-mono">{fmt(avgGross)}</p>
                 </div>
                 <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
-                  <p className="text-blue-500/70 text-xs uppercase font-bold tracking-widest mb-1">Average Net</p>
+                  <p className="text-blue-500/70 text-xs uppercase font-bold tracking-widest mb-1">Average Net (Take Home)</p>
                   <p className="text-3xl font-bold text-blue-400 font-mono">{fmt(avgNet)}</p>
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto rounded-xl border border-zinc-800/50">
                 <table className="w-full text-left text-sm">
-                  <thead className="border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
-                    <tr><th className="p-4">Pay Period Label</th><th className="p-4">Pay Date</th><th className="p-4 text-right">Gross</th><th className="p-4 text-right">Net</th><th className="p-4 text-right">Actions</th></tr>
+                  <thead className="bg-zinc-950/50 border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
+                    <tr>
+                      <th className="p-4 cursor-pointer hover:text-zinc-300 select-none" onClick={() => handleIncomeSort('pay_date')}>Pay Date <SortIcon col="pay_date" /></th>
+                      <th className="p-4 text-right cursor-pointer hover:text-zinc-300 select-none" onClick={() => handleIncomeSort('gross_amount')}>Gross <SortIcon col="gross_amount" /></th>
+                      <th className="p-4 text-right cursor-pointer hover:text-zinc-300 select-none" onClick={() => handleIncomeSort('net_amount')}>Take Home <SortIcon col="net_amount" /></th>
+                      <th className="p-4 text-right">Actions</th>
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/50">
-                    {incomeSources.map(i => (
+                    {sortedIncome.map(i => (
                       <tr key={i.id} className="hover:bg-white/[0.02]">
-                        <td className="p-4 text-zinc-200">{i.employer_name}</td>
-                        <td className="p-4 text-zinc-400 font-mono">{i.pay_date ? new Date(i.pay_date).toLocaleDateString() : '-'}</td>
-                        <td className="p-4 text-right text-zinc-400">{fmt(i.gross_amount||0)}</td>
+                        <td className="p-4 text-zinc-400 font-mono">{i.pay_date ? (() => { const [y,m,d] = (i.pay_date||'').split('-'); return new Date(+y, +m-1, +d).toLocaleDateString() })() : '-'}</td>
+                        <td className="p-4 text-right text-zinc-300 font-mono">{fmt(i.gross_amount||0)}</td>
                         <td className="p-4 text-right text-blue-400 font-mono font-bold">{fmt(i.net_amount||0)}</td>
                         <td className="p-4 text-right">
-                          <button onClick={() => { setEditingIncome(i); setIncomeForm(i); setIsIncomeModalOpen(true) }} className="btn-icon"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => { setEditingIncome(i); setIncomeForm(i); setIncomeGrossStr((i.gross_amount||0).toFixed(2)); setIncomeNetStr((i.net_amount||0).toFixed(2)); setIncomeImportMode('form'); setIsIncomeModalOpen(true) }} className="btn-icon"><Edit2 className="w-4 h-4" /></button>
                           <button onClick={() => del('income_sources', i.id!)} className="btn-icon text-red-400"><Trash2 className="w-4 h-4" /></button>
                         </td>
                       </tr>
                     ))}
-                    {incomeSources.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-zinc-600">No paychecks recorded.</td></tr>}
+                    {incomeSources.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-zinc-600">No paychecks recorded.</td></tr>}
                   </tbody>
                 </table>
               </div>
             </div>
-          )}
+            )
+          })()}
 
           {/* DIRECT DEPOSIT */}
           {activeTab === 'direct-deposit' && (
@@ -852,12 +959,31 @@ export default function Dashboard() {
       {/* Expense Modal */}
       {isExpenseModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-zinc-800 border border-zinc-600 w-full max-w-lg rounded-3xl p-8">
+          <div className="bg-zinc-800 border border-zinc-600 w-full max-w-lg rounded-3xl p-8 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-white">{editingExpense ? 'Edit' : 'Add'} Expense</h2><button onClick={() => setIsExpenseModalOpen(false)} className="btn-icon"><X/></button></div>
             <form onSubmit={handleSaveExpense} className="space-y-4">
+              {/* Name */}
               <div><label className="text-xs font-bold text-zinc-500 uppercase">Name</label><input required value={expenseForm.name} onChange={e=>setExpenseForm({...expenseForm, name: e.target.value})} className="input-field" /></div>
+
+              {/* Amount + Frequency */}
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="text-xs font-bold text-zinc-500 uppercase">Amount</label><input required type="number" step="0.01" value={expenseForm.amount} onChange={e=>setExpenseForm({...expenseForm, amount: +e.target.value})} className="input-field" /></div>
+                <div>
+                  <label className="text-xs font-bold text-zinc-500 uppercase">Amount</label>
+                  <input
+                    required
+                    type="text"
+                    inputMode="decimal"
+                    value={expenseAmountStr}
+                    placeholder="$0.00"
+                    onFocus={e => e.target.select()}
+                    onChange={e => setExpenseAmountStr(e.target.value)}
+                    onBlur={e => {
+                      const n = parseCurrencyInput(e.target.value)
+                      if (!isNaN(n)) setExpenseAmountStr(n.toFixed(2))
+                    }}
+                    className="input-field font-mono"
+                  />
+                </div>
                 <div>
                   <label className="text-xs font-bold text-zinc-500 uppercase">Frequency</label>
                   <select value={expenseForm.frequency} onChange={e=>setExpenseForm({...expenseForm, frequency: e.target.value})} className="input-field capitalize">
@@ -865,10 +991,58 @@ export default function Dashboard() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="text-xs font-bold text-zinc-500 uppercase">Category</label><select value={expenseForm.category} onChange={e=>setExpenseForm({...expenseForm, category: e.target.value})} className="input-field">{categories.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
-                <div><label className="text-xs font-bold text-zinc-500 uppercase">Account</label><select value={expenseForm.account_code} onChange={e=>setExpenseForm({...expenseForm, account_code: e.target.value})} className="input-field">{accounts.map(a=><option key={a.id} value={a.account_code}>{a.name} ({a.account_code})</option>)}</select></div>
+
+              {/* Category — with inline add */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-zinc-500 uppercase">Category</label>
+                  <button type="button" onClick={() => setShowNewCategoryInExpense(v => !v)} className="text-xs text-blue-400 hover:text-blue-300 font-medium">
+                    {showNewCategoryInExpense ? '← Back to list' : '+ New Category'}
+                  </button>
+                </div>
+                {showNewCategoryInExpense ? (
+                  <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-4 space-y-3">
+                    <input
+                      value={newCatName}
+                      onChange={e => setNewCatName(e.target.value)}
+                      placeholder="Category name"
+                      className="input-field"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      {PRESET_COLORS.map(color => (
+                        <button key={color} type="button" onClick={() => setNewCatColor(color)}
+                          className={`w-7 h-7 rounded-full border-2 transition-all ${newCatColor === color ? 'border-white scale-110' : 'border-transparent hover:scale-105'}`}
+                          style={{ backgroundColor: color }}
+                        />
+                      ))}
+                    </div>
+                    <button type="button" onClick={handleSaveNewCategoryInline} className="btn-primary w-full justify-center py-2 text-sm">
+                      <Save className="w-3.5 h-3.5"/> Create &amp; Select
+                    </button>
+                  </div>
+                ) : (
+                  <select value={expenseForm.category} onChange={e=>setExpenseForm({...expenseForm, category: e.target.value})} className="input-field">
+                    {categories.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
+                  </select>
+                )}
               </div>
+
+              {/* Account */}
+              <div><label className="text-xs font-bold text-zinc-500 uppercase">Account</label><select value={expenseForm.account_code} onChange={e=>setExpenseForm({...expenseForm, account_code: e.target.value})} className="input-field">{accounts.map(a=><option key={a.id} value={a.account_code}>{a.name} ({a.account_code})</option>)}</select></div>
+
+              {/* Notes */}
+              <div>
+                <label className="text-xs font-bold text-zinc-500 uppercase">Notes</label>
+                <textarea
+                  value={expenseForm.notes}
+                  onChange={e=>setExpenseForm({...expenseForm, notes: e.target.value})}
+                  placeholder="Optional notes about this expense..."
+                  rows={3}
+                  className="input-field resize-none"
+                />
+              </div>
+
+              {/* Fixed bill */}
               <label className="flex items-center gap-3 p-4 bg-zinc-700 border border-zinc-600 rounded-xl cursor-pointer">
                 <input type="checkbox" checked={expenseForm.fixed} onChange={e=>setExpenseForm({...expenseForm, fixed: e.target.checked})} className="rounded bg-zinc-900 border-zinc-700 text-blue-500"/>
                 <div><p className="text-sm font-bold text-zinc-200">Fixed Bill</p><p className="text-xs text-zinc-500">Used for emergency fund math</p></div>
@@ -882,17 +1056,101 @@ export default function Dashboard() {
       {/* Income Modal */}
       {isIncomeModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-zinc-800 border border-zinc-600 w-full max-w-sm rounded-3xl p-8">
-            <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-white">{editingIncome ? 'Edit' : 'Add'} Paycheck</h2><button onClick={() => setIsIncomeModalOpen(false)} className="btn-icon"><X/></button></div>
-            <form onSubmit={handleSaveIncome} className="space-y-4">
-              <div><label className="text-xs font-bold text-zinc-500 uppercase">Pay Period Label</label><input required value={incomeForm.employer_name} onChange={e=>setIncomeForm({...incomeForm, employer_name: e.target.value})} placeholder="e.g. May 1-15" className="input-field" /></div>
-              <div><label className="text-xs font-bold text-zinc-500 uppercase">Pay Date</label><input required type="date" value={incomeForm.pay_date} onChange={e=>setIncomeForm({...incomeForm, pay_date: e.target.value})} className="input-field [color-scheme:dark]" /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="text-xs font-bold text-zinc-500 uppercase">Gross Amount</label><input required type="number" step="0.01" value={incomeForm.gross_amount} onChange={e=>setIncomeForm({...incomeForm, gross_amount: +e.target.value})} className="input-field" /></div>
-                <div><label className="text-xs font-bold text-zinc-500 uppercase">Net Amount</label><input required type="number" step="0.01" value={incomeForm.net_amount} onChange={e=>setIncomeForm({...incomeForm, net_amount: +e.target.value})} className="input-field" /></div>
+          <div className="bg-zinc-800 border border-zinc-600 w-full max-w-lg rounded-3xl p-8">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-white">{editingIncome ? 'Edit' : 'Add'} Paycheck</h2>
+              <button onClick={() => setIsIncomeModalOpen(false)} className="btn-icon"><X/></button>
+            </div>
+            {/* Mode tabs */}
+            {!editingIncome && (
+              <div className="flex mb-6 bg-zinc-900 rounded-xl p-1 gap-1">
+                <button type="button" onClick={() => setIncomeImportMode('form')} className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${incomeImportMode === 'form' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>Manual Entry</button>
+                <button type="button" onClick={() => setIncomeImportMode('paste')} className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${incomeImportMode === 'paste' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>Paste Import</button>
               </div>
-              <button type="submit" className="btn-primary w-full justify-center py-3"><Save className="w-4 h-4"/> Save</button>
-            </form>
+            )}
+
+            {incomeImportMode === 'form' ? (
+              <form onSubmit={handleSaveIncome} className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-zinc-500 uppercase">Pay Date</label>
+                  <input required type="date" value={incomeForm.pay_date} onChange={e=>setIncomeForm({...incomeForm, pay_date: e.target.value})} className="input-field [color-scheme:dark]" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-zinc-500 uppercase">Gross</label>
+                    <input
+                      required
+                      type="text"
+                      inputMode="decimal"
+                      value={incomeGrossStr}
+                      placeholder="$0.00"
+                      onFocus={e => e.target.select()}
+                      onChange={e => setIncomeGrossStr(e.target.value)}
+                      onBlur={e => {
+                        const n = parseCurrencyInput(e.target.value)
+                        if (!isNaN(n)) setIncomeGrossStr(n.toFixed(2))
+                      }}
+                      className="input-field font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-zinc-500 uppercase">Take Home</label>
+                    <input
+                      required
+                      type="text"
+                      inputMode="decimal"
+                      value={incomeNetStr}
+                      placeholder="$0.00"
+                      onFocus={e => e.target.select()}
+                      onChange={e => setIncomeNetStr(e.target.value)}
+                      onBlur={e => {
+                        const n = parseCurrencyInput(e.target.value)
+                        if (!isNaN(n)) setIncomeNetStr(n.toFixed(2))
+                      }}
+                      className="input-field font-mono"
+                    />
+                  </div>
+                </div>
+                <button type="submit" className="btn-primary w-full justify-center py-3"><Save className="w-4 h-4"/> Save</button>
+              </form>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Paste Pay Stub Text</label>
+                  <textarea
+                    className="input-field font-mono text-xs h-48 resize-none"
+                    placeholder={`Apr 24, 2026\nGross\n$4,118.65\nTake Home\n$2,699.37\nApr 10, 2026\n...`}
+                    value={incomePasteText}
+                    onChange={e => { setIncomePasteText(e.target.value); setIncomePastePreview([]) }}
+                  />
+                </div>
+                {incomePastePreview.length === 0 ? (
+                  <button type="button" onClick={handlePasteImport} className="btn-secondary w-full justify-center py-3">Parse Text</button>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="border border-zinc-700 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-zinc-900 text-zinc-500 uppercase"><tr><th className="p-2">Date</th><th className="p-2 text-right">Gross</th><th className="p-2 text-right">Take Home</th></tr></thead>
+                        <tbody className="divide-y divide-zinc-800">
+                          {incomePastePreview.map((r, idx) => (
+                            <tr key={idx} className="text-zinc-300">
+                              <td className="p-2 font-mono">{r.pay_date}</td>
+                              <td className="p-2 text-right font-mono">{fmt(r.gross_amount||0)}</td>
+                              <td className="p-2 text-right font-mono text-blue-400">{fmt(r.net_amount||0)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-xs text-zinc-500">{incomePastePreview.length} paychecks detected</p>
+                    <div className="flex gap-3">
+                      <button type="button" onClick={() => setIncomePastePreview([])} className="btn-secondary flex-1 justify-center py-2.5">Re-parse</button>
+                      <button type="button" onClick={handleConfirmPasteImport} className="btn-primary flex-1 justify-center py-2.5"><Save className="w-4 h-4"/> Import {incomePastePreview.length}</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -906,7 +1164,7 @@ export default function Dashboard() {
               <div><label className="text-xs font-bold text-zinc-500 uppercase">Account Name</label><input required value={accountForm.name} onChange={e=>setAccountForm({...accountForm, name: e.target.value})} className="input-field" /></div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="text-xs font-bold text-zinc-500 uppercase">Code / Last 4</label><input required value={accountForm.account_code} onChange={e=>setAccountForm({...accountForm, account_code: e.target.value})} className="input-field font-mono" /></div>
-                <div><label className="text-xs font-bold text-zinc-500 uppercase">Type</label><select value={accountForm.type} onChange={e=>setAccountForm({...accountForm, type: e.target.value})} className="input-field"><option value="checking">Checking</option><option value="savings">Savings</option></select></div>
+                <div><label className="text-xs font-bold text-zinc-500 uppercase">Type</label><select value={accountForm.type} onChange={e=>setAccountForm({...accountForm, type: e.target.value})} className="input-field"><option value="checking">Checking</option><option value="savings">Savings</option><option value="credit-card">Credit Card</option></select></div>
               </div>
               <button type="submit" className="btn-primary w-full justify-center py-3"><Save className="w-4 h-4"/> Save</button>
             </form>
