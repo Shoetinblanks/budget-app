@@ -1,371 +1,181 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { 
-  Receipt, 
-  BarChart3, 
-  Wallet, 
-  Plus, 
-  Trash2, 
-  Edit2, 
-  X, 
-  Save, 
-  CheckCircle2, 
-  Circle, 
-  Upload, 
-  Search, 
-  Filter, 
-  ArrowUpDown, 
-  Settings, 
-  CheckSquare, 
-  Square, 
-  RotateCcw,
-  Check
+  Receipt, BarChart3, Wallet, Plus, Trash2, Edit2, X, Save, CheckCircle2, Upload, 
+  Search, ArrowUpDown, Settings, CheckSquare, Square, RotateCcw, Check, Briefcase, Tags
 } from 'lucide-react'
 import Papa from 'papaparse'
 import { User } from '@supabase/supabase-js'
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-
-interface Profile {
-  friendly_name?: string
-  round_up_target?: number
-}
-
-interface Account {
-  name: string
-  account_code: string
-}
-
-interface Expense {
-  id?: string
-  name: string
-  monthly_amount: number
-  bi_weekly_amount: number
-  category: string
-  fixed: boolean
-  account_code: string
-  due_date: string
-}
-
-interface Transaction {
-  id?: string
-  transaction_date: string
-  post_date?: string
-  description: string
-  category: string
-  subcategory?: string
-  type?: string
-  amount: number
-  memo?: string
-}
-
-interface IncomeSource {
-  employer_name: string
-  pay_frequency: string
-  net_amount?: number
-  gross_amount?: number
-  taxes?: number
-  deductions?: number
-}
-
-interface CategoryRule {
-  id?: string
-  merchant_pattern: string
-  category: string
-}
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { Profile, Category, Account, Expense, Transaction, IncomeSource, CategoryRule, DEFAULT_CATEGORIES, PRESET_COLORS, calcAmounts, getBaseAmount, fmt } from './types'
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('transactions')
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
+  
+  // Data State
   const [accounts, setAccounts] = useState<Account[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([])
   const [categoryRules, setCategoryRules] = useState<CategoryRule[]>([])
-  // We fetch plaidItems to ensure they exist, but don't strictly need to render them yet in this view
-  // const [plaidItems, setPlaidItems] = useState<PlaidItem[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+
   const [loading, setLoading] = useState(true)
-  const [emergencyMonths, setEmergencyMonths] = useState<number>(3)
-  const [totalsView, setTotalsView] = useState<'bi-weekly' | 'monthly' | 'yearly'>('monthly')
+  const [totalsView] = useState<'bi-weekly' | 'monthly' | 'yearly'>('monthly')
   const [selectedTransactions, setSelectedTransactions] = useState<string[]>([])
   const [isApplyingRules, setIsApplyingRules] = useState(false)
   const [isUndoing, setIsUndoing] = useState(false)
   
-  // Date Range Filter State
+  // Filters & Pagination
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [txDisplayLimit, setTxDisplayLimit] = useState<number | 'all'>(50)
 
-  // Rule Modal State
-  const [isRuleModalOpen, setIsRuleModalOpen] = useState(false)
-  const [editingRule, setEditingRule] = useState<CategoryRule | null>(null)
-  const [ruleForm, setRuleForm] = useState<CategoryRule>({ merchant_pattern: '', category: 'General' })
-  
-  // Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  // Modals & Forms
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
+  const [isRuleModalOpen, setIsRuleModalOpen] = useState(false)
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false)
+  const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false)
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false)
+
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
-  const [formState, setFormState] = useState<Expense>({
-    name: '',
-    monthly_amount: 0,
-    bi_weekly_amount: 0,
-    category: 'General',
-    fixed: true,
-    account_code: '',
-    due_date: ''
+  const [editingRule, setEditingRule] = useState<CategoryRule | null>(null)
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
+  const [editingIncome, setEditingIncome] = useState<IncomeSource | null>(null)
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null)
+
+  const [expenseForm, setExpenseForm] = useState<{name: string, amount: number, frequency: string, category: string, fixed: boolean, account_code: string, due_date: string}>({
+    name: '', amount: 0, frequency: 'monthly', category: 'General', fixed: true, account_code: '', due_date: ''
   })
+  const [ruleForm, setRuleForm] = useState<CategoryRule>({ merchant_pattern: '', category: 'General' })
+  const [categoryForm, setCategoryForm] = useState<Category>({ name: '', color: PRESET_COLORS[0] })
+  const [incomeForm, setIncomeForm] = useState<IncomeSource>({ employer_name: '', pay_date: '', pay_frequency: 'bi-weekly', gross_amount: 0, net_amount: 0 })
+  const [accountForm, setAccountForm] = useState<Account>({ name: '', account_code: '', type: 'checking' })
 
   // Import State
   const [importPreview, setImportPreview] = useState<Transaction[]>([])
   const [importLoading, setImportLoading] = useState(false)
   const [flipAmounts, setFlipAmounts] = useState(false)
+  const [autoFlipDetected, setAutoFlipDetected] = useState(false)
 
   const supabase = createClient()
   const router = useRouter()
 
-  useEffect(() => {
-    async function loadDashboardData() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        router.push('/login')
-        return
-      }
-      setUser(user)
+  const loadDashboardData = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { router.push('/login'); return }
+    setUser(user)
 
-      const [pRes, aRes, eRes, iRes, tRes, rRes] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', user.id).single(),
-        supabase.from('accounts').select('*').eq('user_id', user.id),
-        supabase.from('expenses').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-        supabase.from('income_sources').select('*').eq('user_id', user.id),
-        supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false }),
-        supabase.from('category_rules').select('*').eq('user_id', user.id)
-      ])
+    const [pRes, aRes, eRes, iRes, tRes, rRes, cRes] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', user.id).single(),
+      supabase.from('accounts').select('*').eq('user_id', user.id),
+      supabase.from('expenses').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+      supabase.from('income_sources').select('*').eq('user_id', user.id).order('pay_date', { ascending: false }),
+      supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false }),
+      supabase.from('category_rules').select('*').eq('user_id', user.id),
+      supabase.from('categories').select('*').eq('user_id', user.id).order('name')
+    ])
 
-      setProfile(pRes.data)
-      setAccounts(aRes.data || [])
-      setExpenses(eRes.data || [])
-      setIncomeSources(iRes.data || [])
-      setTransactions(tRes.data || [])
-      setCategoryRules(rRes.data || [])
-      // setPlaidItems(plaidRes.data || [])
-      
-      if (aRes.data?.[0]) {
-        setFormState(prev => ({ ...prev, account_code: aRes.data[0].account_code }))
-      }
-      
-      setLoading(false)
+    setProfile(pRes.data)
+    setAccounts(aRes.data || [])
+    setExpenses(eRes.data || [])
+    setIncomeSources(iRes.data || [])
+    setTransactions(tRes.data || [])
+    setCategoryRules(rRes.data || [])
+
+    let cats = cRes.data || []
+    if (cats.length === 0) {
+      // Seed default categories
+      const { data: insertedCats } = await supabase.from('categories').insert(
+        DEFAULT_CATEGORIES.map(c => ({ ...c, user_id: user.id }))
+      ).select()
+      if (insertedCats) cats = insertedCats
     }
-
-    loadDashboardData()
+    setCategories(cats)
+    
+    if (aRes.data?.[0]) setExpenseForm(prev => ({ ...prev, account_code: aRes.data[0].account_code }))
+    if (cats?.[0]) setExpenseForm(prev => ({ ...prev, category: cats[0].name }))
+    
+    setLoading(false)
   }, [supabase, router])
 
+  useEffect(() => {
+    loadDashboardData()
+  }, [loadDashboardData])
+
+  // --- Transactions ---
+
   const handleUndoLastImport = async () => {
-    if (!confirm('Are you sure you want to undo the last import? This will delete all transactions added in the last batch.')) return
-    
+    if (!confirm('Undo the last import? This deletes all transactions added in the last batch.')) return
     setIsUndoing(true)
-    const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-
-    // Find the absolute latest created_at
-    const { data: latest } = await supabase
-      .from('transactions')
-      .select('created_at')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-
+    const { data: latest } = await supabase.from('transactions').select('created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1)
     if (latest && latest.length > 0) {
       const latestTime = new Date(latest[0].created_at)
-      const windowStart = new Date(latestTime.getTime() - 5000).toISOString() // 5 second window
+      const windowStart = new Date(latestTime.getTime() - 5000).toISOString()
       const windowEnd = new Date(latestTime.getTime() + 1000).toISOString()
-
-      const { error, count } = await supabase
-        .from('transactions')
-        .delete()
-        .eq('user_id', user.id)
-        .gte('created_at', windowStart)
-        .lte('created_at', windowEnd)
-
+      const { error, count } = await supabase.from('transactions').delete().eq('user_id', user.id).gte('created_at', windowStart).lte('created_at', windowEnd)
       if (!error) {
         alert(`Successfully removed ${count || 'recent'} transactions.`)
-        // Refresh
-        const { data } = await supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false })
-        setTransactions(data || [])
-      } else {
-        alert('Error undoing import: ' + error.message)
-      }
-    } else {
-      alert('No transactions found to undo.')
-    }
+        loadDashboardData()
+      } else alert('Error: ' + error.message)
+    } else alert('No transactions found to undo.')
     setIsUndoing(false)
   }
 
-  const handleDeleteSelected = async () => {
-    if (selectedTransactions.length === 0) return
-    if (!confirm(`Are you sure you want to delete ${selectedTransactions.length} selected transactions?`)) return
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    const { error } = await supabase
-      .from('transactions')
-      .delete()
-      .in('id', selectedTransactions)
-
+  const handleDeleteSelectedTx = async () => {
+    if (selectedTransactions.length === 0 || !confirm(`Delete ${selectedTransactions.length} transactions?`)) return
+    const { error } = await supabase.from('transactions').delete().in('id', selectedTransactions)
     if (!error) {
-      const { data } = await supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false })
-      setTransactions(data || [])
+      loadDashboardData()
       setSelectedTransactions([])
-    } else {
-      alert('Error deleting transactions: ' + error.message)
-    }
+    } else alert('Error: ' + error.message)
   }
 
-  const handleApplyRulesToAll = async () => {
-    if (categoryRules.length === 0) {
-      alert('No rules found. Create some rules first!')
-      return
-    }
-
-    if (!confirm(`This will go through all ${transactions.length} visible transactions and update their categories based on your ${categoryRules.length} rules. Continue?`)) return
-
-    setIsApplyingRules(true)
-    let updateCount = 0
-
-    const updates = transactions.map(t => {
-      const rule = categoryRules.find(r => 
-        t.description.toLowerCase().includes(r.merchant_pattern.toLowerCase())
-      )
-      if (rule && rule.category !== t.category) {
-        updateCount++
-        return { ...t, category: rule.category }
-      }
-      return null
-    }).filter(Boolean) as Transaction[]
-
-    if (updates.length === 0) {
-      alert('No transactions needed updating based on current rules.')
-      setIsApplyingRules(false)
-      return
-    }
-
-    // Supabase upsert/update in batch
-    for (const update of updates) {
-      await supabase.from('transactions').update({ category: update.category }).eq('id', update.id)
-    }
-
-    alert(`Successfully updated ${updateCount} transactions!`)
-    
-    // Refresh
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      const { data } = await supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false })
-      setTransactions(data || [])
-    }
-    
-    setIsApplyingRules(false)
-  }
-
-  const handleDeleteRule = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this rule?')) return
-    const { error } = await supabase.from('category_rules').delete().eq('id', id)
-    if (!error) {
-      setCategoryRules(categoryRules.filter(r => r.id !== id))
-    }
-  }
-
-  const openCreateRuleModal = (t?: Transaction) => {
-    if (t) {
-      let pattern = t.description;
-      // Heuristic cleaning
-      pattern = pattern.replace(/#\d+/g, '') // Remove store numbers like #1234
-      pattern = pattern.replace(/\b[A-Z]{2}\b$/, '') // Remove trailing state code like AZ or NV
-      pattern = pattern.replace(/\s+/g, ' ').trim()
-      
-      let suggestedCategory = t.category;
-      if (suggestedCategory === 'Charge' || suggestedCategory === 'General' || !suggestedCategory) {
-        const lower = pattern.toLowerCase();
-        if (lower.includes('wal-mart') || lower.includes('kroger') || lower.includes('safeway') || lower.includes('publix')) suggestedCategory = 'Food';
-        else if (lower.includes('caesars') || lower.includes('mgm') || lower.includes('wynn') || lower.includes('venetian')) suggestedCategory = 'Entertainment';
-        else if (lower.includes('shell') || lower.includes('chevron') || lower.includes('arco') || lower.includes('exxon')) suggestedCategory = 'Transportation';
-        else if (lower.includes('netflix') || lower.includes('spotify') || lower.includes('hulu') || lower.includes('hbo')) suggestedCategory = 'Entertainment';
-        else if (lower.includes('amazon')) suggestedCategory = 'General';
-        else if (lower.includes('mcdonald') || lower.includes('starbucks') || lower.includes('wendy') || lower.includes('taco bell')) suggestedCategory = 'Food';
-        else if (lower.includes('home depot') || lower.includes('lowes')) suggestedCategory = 'Housing';
-        else if (lower.includes('nv energy') || lower.includes('swgas') || lower.includes('water')) suggestedCategory = 'Utilities';
-      }
-      setRuleForm({ merchant_pattern: pattern, category: suggestedCategory || 'General' });
-    } else {
-      setRuleForm({ merchant_pattern: '', category: 'General' });
-    }
-    setEditingRule(null);
-    setIsRuleModalOpen(true);
-  }
-
-  const openEditRuleModal = (rule: CategoryRule) => {
-    setRuleForm(rule);
-    setEditingRule(rule);
-    setIsRuleModalOpen(true);
-  }
-
-  const handleSaveRuleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const { data: { user } } = await supabase.auth.getUser()
+  const handleInlineCategoryChange = async (t: Transaction, newCategory: string) => {
     if (!user) return
-
-    const ruleData = { ...ruleForm, user_id: user.id }
-    let error;
-
-    if (editingRule?.id) {
-      const { error: err } = await supabase.from('category_rules').update(ruleData).eq('id', editingRule.id)
-      error = err;
-    } else {
-      const { error: err } = await supabase.from('category_rules').insert(ruleData)
-      error = err;
-    }
-
-    if (!error) {
-      setIsRuleModalOpen(false)
-      const { data } = await supabase.from('category_rules').select('*').eq('user_id', user.id)
-      setCategoryRules(data || [])
-    } else {
-      alert('Error saving rule: ' + error.message)
+    await supabase.from('transactions').update({ category: newCategory }).eq('id', t.id)
+    setTransactions(transactions.map(tr => tr.id === t.id ? { ...tr, category: newCategory } : tr))
+    const matchingRule = categoryRules.find(r => t.description.toLowerCase().includes(r.merchant_pattern.toLowerCase()))
+    if (matchingRule && matchingRule.category !== newCategory) {
+      if (confirm(`Update existing rule for "${matchingRule.merchant_pattern}" to ${newCategory}?`)) {
+        await supabase.from('category_rules').update({ category: newCategory }).eq('id', matchingRule.id)
+        setCategoryRules(categoryRules.map(r => r.id === matchingRule.id ? { ...r, category: newCategory } : r))
+      }
     }
   }
 
-  const handleSaveExpense = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    const expenseData = { ...formState, user_id: user.id }
-    let error
-    if (editingExpense?.id) {
-      const { error: err } = await supabase.from('expenses').update(expenseData).eq('id', editingExpense.id)
-      error = err
-    } else {
-      const { error: err } = await supabase.from('expenses').insert(expenseData)
-      error = err
-    }
-
-    if (!error) {
-      setIsModalOpen(false)
-      setEditingExpense(null)
-      const { data } = await supabase.from('expenses').select('*').eq('user_id', user.id).order('created_at', { ascending: false })
-      setExpenses(data || [])
-    }
-  }
+  // --- Import Logic ---
 
   const processCSVFile = (file: File) => {
     setImportLoading(true)
     Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
+      header: true, skipEmptyLines: true,
       complete: (results) => {
-        const mapped = mapCSVToTransactions(results.data as Record<string, string>[])
-        setImportPreview(mapped)
+        const rawData = results.data as Record<string, string>[]
+        // Auto-detect flip
+        let posCount = 0, totalValid = 0
+        rawData.forEach(row => {
+          const amtStr = row['Amount']?.toString().replace(/[$,]/g, '')
+          if (amtStr) {
+            const val = parseFloat(amtStr)
+            if (!isNaN(val) && val !== 0) {
+              totalValid++
+              if (val > 0) posCount++
+            }
+          }
+        })
+        const shouldFlip = totalValid > 0 && (posCount / totalValid) > 0.6
+        setFlipAmounts(shouldFlip)
+        setAutoFlipDetected(shouldFlip)
+        setImportPreview(mapCSVToTransactions(rawData, shouldFlip))
         setImportLoading(false)
       }
     })
@@ -376,1094 +186,716 @@ export default function Dashboard() {
     if (file) processCSVFile(file)
   }
 
-  const handleInlineCategoryChange = async (t: Transaction, newCategory: string) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    // 1. Update the transaction itself
-    await supabase.from('transactions').update({ category: newCategory }).eq('id', t.id)
-
-    // Update local state for immediate feedback
-    setTransactions(transactions.map(tr => tr.id === t.id ? { ...tr, category: newCategory } : tr))
-
-    // 2. Check for matching rules
-    const matchingRule = categoryRules.find(r => t.description.toLowerCase().includes(r.merchant_pattern.toLowerCase()))
-    
-    if (matchingRule) {
-      if (matchingRule.category !== newCategory) {
-        if (confirm(`A rule exists that categorizes "${matchingRule.merchant_pattern}" as ${matchingRule.category}.\n\nDo you want to update this rule to ${newCategory}?`)) {
-          const { error } = await supabase.from('category_rules').update({ category: newCategory }).eq('id', matchingRule.id)
-          if (!error) {
-            setCategoryRules(categoryRules.map(r => r.id === matchingRule.id ? { ...r, category: newCategory } : r))
-            alert('Rule updated successfully!')
-          }
-        }
-      }
-    }
-  }
-
-  const mapCSVToTransactions = (data: Record<string, string>[]): Transaction[] => {
+  const mapCSVToTransactions = (data: Record<string, string>[], flip: boolean): Transaction[] => {
     return data.map(row => {
-      let t: Transaction
-      
-      // Detection logic
-      if (row['Transaction Date'] && row['Post Date'] && row['Amount']) {
-        t = {
-          transaction_date: row['Transaction Date'],
-          post_date: row['Post Date'],
-          description: row['Description'],
-          category: row['Category'] || 'General',
-          type: row['Type'],
-          amount: parseFloat(row['Amount']) * (flipAmounts ? -1 : 1),
-          memo: row['Memo']
-        }
-      } else if (row['Date'] && row['Description'] && row['Amount']) {
-        t = {
-          transaction_date: row['Date'],
-          description: row['Description'],
-          category: row['Category'] || 'General',
-          amount: parseFloat(row['Amount']) * (flipAmounts ? -1 : 1),
-          memo: row['Location']
-        }
-      } else {
-        t = {
-          transaction_date: row['Date'] || row['Transaction Date'] || '',
-          description: row['Description'] || '',
-          category: row['Category'] || 'General',
-          amount: parseFloat(row['Amount']?.toString().replace(/[$,]/g, '') || '0') * (flipAmounts ? -1 : 1)
-        }
+      const amtStr = row['Amount']?.toString().replace(/[$,]/g, '') || '0'
+      const baseAmt = parseFloat(amtStr)
+      const amt = baseAmt * (flip ? -1 : 1)
+      const t: Transaction = {
+        transaction_date: row['Date'] || row['Transaction Date'] || '',
+        description: row['Description'] || '',
+        category: row['Category'] || categories[0]?.name || 'General',
+        amount: isNaN(amt) ? 0 : amt,
+        memo: row['Memo'] || row['Location'] || ''
       }
+      if (row['Post Date']) t.post_date = row['Post Date']
+      if (row['Type']) t.type = row['Type']
 
-      // Apply Smart Categorization
-      const rule = categoryRules.find(r => 
-        t.description.toLowerCase().includes(r.merchant_pattern.toLowerCase())
-      )
-      if (rule) {
-        t.category = rule.category
-      }
-
+      const rule = categoryRules.find(r => t.description.toLowerCase().includes(r.merchant_pattern.toLowerCase()))
+      if (rule) t.category = rule.category
       return t
     })
   }
 
   const handleImportTransactions = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-
     setImportLoading(true)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    const { data: existing } = await supabase.from('transactions').select('transaction_date, amount, description').eq('user_id', user.id).gte('transaction_date', thirtyDaysAgo)
     
-    // Deduplication logic: Check for existing transactions in the last 30 days
-    const { data: existing } = await supabase
-      .from('transactions')
-      .select('transaction_date, amount, description')
-      .eq('user_id', user.id)
-      .gte('transaction_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-
     const toInsert = importPreview.filter(t => {
-      const isDuplicate = existing?.some(e => 
+      return !existing?.some(e => 
         new Date(e.transaction_date).toLocaleDateString() === new Date(t.transaction_date).toLocaleDateString() &&
-        Math.abs(e.amount - t.amount) < 0.01 &&
-        e.description.toLowerCase() === t.description.toLowerCase()
+        Math.abs(e.amount - t.amount) < 0.01 && e.description.toLowerCase() === t.description.toLowerCase()
       )
-      return !isDuplicate
     }).map(t => ({ ...t, user_id: user.id }))
     
     if (toInsert.length > 0) {
       const { error } = await supabase.from('transactions').insert(toInsert)
-      if (error) {
-        alert('Error importing transactions: ' + error.message)
-      } else {
-        alert(`Successfully imported ${toInsert.length} new transactions. (${importPreview.length - toInsert.length} duplicates skipped)`)
-      }
-    } else {
-      alert('No new transactions to import. All items in the file were identified as duplicates.')
-    }
+      if (error) alert('Error: ' + error.message)
+      else alert(`Imported ${toInsert.length} transactions. (${importPreview.length - toInsert.length} duplicates skipped)`)
+    } else alert('No new transactions to import. All duplicates.')
     
     setIsImportModalOpen(false)
     setImportPreview([])
-    const { data } = await supabase.from('transactions').select('*').eq('user_id', user.id).order('transaction_date', { ascending: false }).limit(50)
-    setTransactions(data || [])
+    loadDashboardData()
     setImportLoading(false)
   }
 
+  // --- Expenses ---
 
-  const handleDeleteExpense = async (id: string) => {
-    if (!confirm('Are you sure?')) return
-    const { error } = await supabase.from('expenses').delete().eq('id', id)
-    if (!error) setExpenses(expenses.filter(e => e.id !== id))
+  const handleSaveExpense = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    const { monthly, biWeekly } = calcAmounts(expenseForm.amount, expenseForm.frequency)
+    const expenseData: Expense = { 
+      user_id: user.id, name: expenseForm.name, frequency: expenseForm.frequency,
+      monthly_amount: monthly, bi_weekly_amount: biWeekly, 
+      category: expenseForm.category, fixed: expenseForm.fixed, 
+      account_code: expenseForm.account_code, due_date: expenseForm.due_date 
+    }
+    const { error } = editingExpense?.id 
+      ? await supabase.from('expenses').update(expenseData).eq('id', editingExpense.id)
+      : await supabase.from('expenses').insert(expenseData)
+
+    if (!error) {
+      setIsExpenseModalOpen(false)
+      loadDashboardData()
+    } else alert('Error: ' + error.message)
   }
 
-  const openEditModal = (expense: Expense) => {
-    setEditingExpense(expense)
-    setFormState(expense)
-    setIsModalOpen(true)
+  // --- Income ---
+
+  const handleSaveIncome = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    const incData = { ...incomeForm, user_id: user.id }
+    const { error } = editingIncome?.id
+      ? await supabase.from('income_sources').update(incData).eq('id', editingIncome.id)
+      : await supabase.from('income_sources').insert(incData)
+    if (!error) {
+      setIsIncomeModalOpen(false)
+      loadDashboardData()
+    } else alert('Error: ' + error.message)
+  }
+
+  // --- Accounts ---
+
+  const handleSaveAccount = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    const accData = { ...accountForm, user_id: user.id }
+    const { error } = editingAccount?.id
+      ? await supabase.from('accounts').update(accData).eq('id', editingAccount.id)
+      : await supabase.from('accounts').insert(accData)
+    if (!error) {
+      setIsAccountModalOpen(false)
+      loadDashboardData()
+    } else alert('Error: ' + error.message)
+  }
+
+  // --- Categories ---
+
+  const handleSaveCategory = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    const catData = { ...categoryForm, user_id: user.id }
+    const { error } = editingCategory?.id
+      ? await supabase.from('categories').update(catData).eq('id', editingCategory.id)
+      : await supabase.from('categories').insert(catData)
+    if (!error) {
+      setIsCategoryModalOpen(false)
+      loadDashboardData()
+    } else alert('Error: ' + error.message)
+  }
+
+  // --- Rules ---
+
+  const handleApplyRulesToAll = async () => {
+    if (categoryRules.length === 0) return alert('No rules found.')
+    if (!confirm(`Apply ${categoryRules.length} rules to all ${transactions.length} transactions?`)) return
+    setIsApplyingRules(true)
+    let updateCount = 0
+    const updates = transactions.map(t => {
+      const rule = categoryRules.find(r => t.description.toLowerCase().includes(r.merchant_pattern.toLowerCase()))
+      if (rule && rule.category !== t.category) { updateCount++; return { ...t, category: rule.category } }
+      return null
+    }).filter(Boolean) as Transaction[]
+
+    if (updates.length > 0) {
+      for (const update of updates) await supabase.from('transactions').update({ category: update.category }).eq('id', update.id)
+      alert(`Updated ${updateCount} transactions!`)
+      loadDashboardData()
+    } else alert('No transactions needed updating.')
+    setIsApplyingRules(false)
+  }
+
+  const handleSaveRule = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    const ruleData = { ...ruleForm, user_id: user.id }
+    const { error } = editingRule?.id
+      ? await supabase.from('category_rules').update(ruleData).eq('id', editingRule.id)
+      : await supabase.from('category_rules').insert(ruleData)
+    if (!error) {
+      setIsRuleModalOpen(false)
+      loadDashboardData()
+    } else alert('Error: ' + error.message)
+  }
+
+  // --- Delete Helpers ---
+  const del = async (table: string, id: string) => {
+    if (!confirm('Are you sure?')) return
+    const { error } = await supabase.from(table).delete().eq('id', id)
+    if (!error) loadDashboardData()
+    else alert('Error: ' + error.message)
   }
 
   if (loading) return <div className="p-8 text-zinc-500 animate-pulse">Loading dashboard...</div>
 
-  // Math Logic
+  // --- Math & Derived State ---
+
+  // Filters
+  const filteredTransactions = transactions.filter(t => {
+    if (startDate && t.transaction_date < startDate) return false
+    if (endDate && t.transaction_date > endDate) return false
+    if (searchQuery && !t.description.toLowerCase().includes(searchQuery.toLowerCase())) return false
+    return true
+  })
+  
+  const displayedTxs = txDisplayLimit === 'all' ? filteredTransactions : filteredTransactions.slice(0, txDisplayLimit)
+
+  // Averages for Income
+  const numIncomeEntries = incomeSources.length || 1
+  const totalGrossIncome = incomeSources.reduce((sum, i) => sum + Number(i.gross_amount || 0), 0)
+  const totalNetIncome = incomeSources.reduce((sum, i) => sum + Number(i.net_amount || 0), 0)
+  const avgGross = totalGrossIncome / numIncomeEntries
+  const avgNet = totalNetIncome / numIncomeEntries
+
+  // Expenses
   const roundUpTarget = profile?.round_up_target || 10
-  const accountMath = accounts.map(account => {
-    const accExpenses = expenses.filter(e => e.account_code === account.account_code)
-    const requiredFunding = accExpenses.reduce((sum, exp) => sum + (Number(exp.bi_weekly_amount) || 0), 0)
-    const directDeposit = Math.ceil(requiredFunding / roundUpTarget) * roundUpTarget
-    return { name: account.name, code: account.account_code, required: requiredFunding, directDeposit }
+  const accountMath = accounts.map(acc => {
+    const accExpenses = expenses.filter(e => e.account_code === acc.account_code)
+    const required = accExpenses.reduce((sum, exp) => sum + Number(exp.bi_weekly_amount || 0), 0)
+    const directDeposit = Math.ceil(required / roundUpTarget) * roundUpTarget
+    return { name: acc.name, code: acc.account_code, required, directDeposit }
   })
 
-  const totalBiWeekly = expenses.reduce((sum, e) => sum + (Number(e.bi_weekly_amount) || 0), 0)
-  const totalMonthly = expenses.reduce((sum, e) => sum + (Number(e.monthly_amount) || 0), 0)
-  const fixedExpenses = expenses.filter(e => e.fixed)
-  const variableExpenses = expenses.filter(e => !e.fixed)
-  const totalDirectDeposit = accountMath.reduce((sum, acc) => sum + acc.directDeposit, 0)
+  const totalMonthly = expenses.reduce((sum, e) => sum + Number(e.monthly_amount || 0), 0)
 
-  // Analytics Math
-  const totalNetPayMonthly = incomeSources.reduce((sum, income) => {
-    let multiplier = 1;
-    if (income.pay_frequency === 'weekly') multiplier = 4.33;
-    if (income.pay_frequency === 'bi-weekly') multiplier = 2.16;
-    if (income.pay_frequency === '1st/15th') multiplier = 2;
-    if (income.pay_frequency === 'monthly') multiplier = 1;
-    return sum + (Number(income.net_amount || 0) * multiplier);
-  }, 0);
+  let viewMultiplier = 1
+  if (totalsView === 'bi-weekly') viewMultiplier = 12 / 26
+  if (totalsView === 'yearly') viewMultiplier = 12
 
-  const totalGrossMonthly = incomeSources.reduce((sum, income) => {
-    let multiplier = 1;
-    if (income.pay_frequency === 'weekly') multiplier = 4.33;
-    if (income.pay_frequency === 'bi-weekly') multiplier = 2.16;
-    if (income.pay_frequency === '1st/15th') multiplier = 2;
-    if (income.pay_frequency === 'monthly') multiplier = 1;
-    return sum + (Number(income.gross_amount || 0) * multiplier);
-  }, 0);
-
-  const totalTaxesMonthly = incomeSources.reduce((sum, income) => {
-    let multiplier = 1;
-    if (income.pay_frequency === 'weekly') multiplier = 4.33;
-    if (income.pay_frequency === 'bi-weekly') multiplier = 2.16;
-    if (income.pay_frequency === '1st/15th') multiplier = 2;
-    if (income.pay_frequency === 'monthly') multiplier = 1;
-    return sum + (Number(income.taxes || 0) * multiplier);
-  }, 0);
-
-  const totalDeductionsMonthly = incomeSources.reduce((sum, income) => {
-    let multiplier = 1;
-    if (income.pay_frequency === 'weekly') multiplier = 4.33;
-    if (income.pay_frequency === 'bi-weekly') multiplier = 2.16;
-    if (income.pay_frequency === '1st/15th') multiplier = 2;
-    if (income.pay_frequency === 'monthly') multiplier = 1;
-    return sum + (Number(income.deductions || 0) * multiplier);
-  }, 0);
-
-  const totalFixedMonthly = fixedExpenses.reduce((sum, e) => sum + Number(e.monthly_amount), 0);
-  const totalVariableMonthly = variableExpenses.reduce((sum, e) => sum + Number(e.monthly_amount), 0);
-  const totalExpensesMonthly = totalFixedMonthly + totalVariableMonthly;
+  // The income basis changes to use the average * standard multipliers since we now use pay period entries
+  // Let's assume the user enters them bi-weekly, or we just project the average forward as bi-weekly equivalents.
+  // Actually, standardizing on the average paycheck amount:
+  const monthlyNet = avgNet * 2.16 // approx
   
-  // Apply view multiplier
-  let viewMultiplier = 1;
-  if (totalsView === 'bi-weekly') viewMultiplier = 12 / 26;
-  if (totalsView === 'yearly') viewMultiplier = 12;
-
-  const viewNetPay = totalNetPayMonthly * viewMultiplier;
-  const viewExpenses = totalExpensesMonthly * viewMultiplier;
-  const viewGross = totalGrossMonthly * viewMultiplier;
-  const viewTaxes = totalTaxesMonthly * viewMultiplier;
-  const viewDeductions = totalDeductionsMonthly * viewMultiplier;
-  const netCashFlow = viewNetPay - viewExpenses;
-
-  const emergencyGoal = totalFixedMonthly * emergencyMonths;
-
-  const netPayVsExpensesData = [
-    { name: 'Income', value: viewNetPay, fill: '#3b82f6' },
-    { name: 'Expenses', value: viewExpenses, fill: '#f43f5e' }
-  ];
-
-  const payBreakdownData = [
-    { name: 'Net Pay', value: viewNetPay, fill: '#3b82f6' },
-    { name: 'Taxes', value: viewTaxes, fill: '#f59e0b' },
-    { name: 'Deductions', value: viewDeductions, fill: '#6366f1' }
-  ];
-
-  const fixedVsVariableData = [
-    { name: 'Fixed', value: totalFixedMonthly, color: '#3b82f6' },
-    { name: 'Variable', value: totalVariableMonthly, color: '#f97316' }
-  ];
+  const viewNetPay = monthlyNet * viewMultiplier
+  const viewExpenses = totalMonthly * viewMultiplier
 
   const categoryDataMap = expenses.reduce((acc, exp) => {
-    acc[exp.category] = (acc[exp.category] || 0) + Number(exp.monthly_amount);
-    return acc;
-  }, {} as Record<string, number>);
+    acc[exp.category] = (acc[exp.category] || 0) + Number(exp.monthly_amount)
+    return acc
+  }, {} as Record<string, number>)
 
-  const categoryData = Object.keys(categoryDataMap).map(key => ({
-    name: key,
-    value: categoryDataMap[key]
-  }));
-
-  const COLORS = ['#3b82f6', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
-
-  // Actual Spending Math (Last 30 Days)
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
   const actualsByCategory = transactions
     .filter(t => new Date(t.transaction_date) >= thirtyDaysAgo)
     .reduce((acc, t) => {
-      const amount = Math.abs(t.amount)
-      acc[t.category] = (acc[t.category] || 0) + amount
+      acc[t.category] = (acc[t.category] || 0) + Math.abs(t.amount)
       return acc
     }, {} as Record<string, number>)
 
   const budgetVsActualData = Object.keys(categoryDataMap).map(cat => ({
-    name: cat,
-    Budgeted: categoryDataMap[cat],
-    Actual: actualsByCategory[cat] || 0
+    name: cat, Budgeted: categoryDataMap[cat], Actual: actualsByCategory[cat] || 0
   }))
 
-  const filteredTransactions = transactions.filter(t => {
-    if (startDate && t.transaction_date < startDate) return false;
-    if (endDate && t.transaction_date > endDate) return false;
-    return true;
-  });
-
-  const tabs = [
+  const navTabs = [
     { id: 'transactions', label: 'Transactions', icon: ArrowUpDown },
     { id: 'expenses', label: 'Expenses', icon: Receipt },
-    { id: 'rules', label: 'Rules', icon: Settings },
-    { id: 'summary', label: 'Summary Totals', icon: BarChart3 },
+    { id: 'income', label: 'Income', icon: Briefcase },
     { id: 'direct-deposit', label: 'Direct Deposit', icon: Wallet },
+    { id: 'categories', label: 'Categories', icon: Tags },
+    { id: 'rules', label: 'Rules', icon: Settings },
+    { id: 'summary', label: 'Summary', icon: BarChart3 },
   ]
 
   return (
     <div className="min-h-screen bg-zinc-950 p-4 sm:p-8">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold text-white tracking-tight">
               Welcome back, <span className="text-blue-500">{profile?.friendly_name || user?.email}</span>
             </h1>
-            <p className="text-zinc-500 mt-2">
-              Managing <span className="text-zinc-300">{incomeSources.length}</span> income sources
-            </p>
           </div>
           <div className="flex gap-3">
             {activeTab === 'transactions' && (
               <>
-                <button 
-                  onClick={handleUndoLastImport}
-                  disabled={isUndoing}
-                  className="bg-zinc-800 hover:bg-zinc-700 text-zinc-400 font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 border border-zinc-700 disabled:opacity-50"
-                  title="Undo the last batch of imported transactions"
-                >
-                  <RotateCcw className={`w-5 h-5 ${isUndoing ? 'animate-spin' : ''}`} />
-                  Undo Last Import
+                <button onClick={handleUndoLastImport} disabled={isUndoing} className="btn-secondary">
+                  <RotateCcw className={`w-5 h-5 ${isUndoing ? 'animate-spin' : ''}`} /> Undo Last
                 </button>
-                <button 
-                  onClick={() => setIsImportModalOpen(true)}
-                  className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20"
-                >
-                  <Upload className="w-5 h-5" />
-                  Import CSV
+                <button onClick={() => setIsImportModalOpen(true)} className="btn-primary">
+                  <Upload className="w-5 h-5" /> Import CSV
                 </button>
               </>
             )}
             {activeTab === 'expenses' && (
-              <button 
-                onClick={() => {
-                  setEditingExpense(null)
-                  setFormState({ name: '', monthly_amount: 0, bi_weekly_amount: 0, category: 'General', fixed: true, account_code: accounts[0]?.account_code || '', due_date: '' })
-                  setIsModalOpen(true)
-                }}
-                className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20"
-              >
-                <Plus className="w-5 h-5" />
-                Add Expense
+              <button onClick={() => { setEditingExpense(null); setExpenseForm({ name: '', amount: 0, frequency: 'monthly', category: categories[0]?.name || 'General', fixed: true, account_code: accounts[0]?.account_code || '', due_date: '' }); setIsExpenseModalOpen(true) }} className="btn-primary">
+                <Plus className="w-5 h-5" /> Add Expense
+              </button>
+            )}
+            {activeTab === 'income' && (
+              <button onClick={() => { setEditingIncome(null); setIncomeForm({ employer_name: '', pay_date: new Date().toISOString().split('T')[0], pay_frequency: 'bi-weekly', gross_amount: 0, net_amount: 0 }); setIsIncomeModalOpen(true) }} className="btn-primary">
+                <Plus className="w-5 h-5" /> Add Paycheck
+              </button>
+            )}
+            {activeTab === 'direct-deposit' && (
+              <button onClick={() => { setEditingAccount(null); setAccountForm({ name: '', account_code: '', type: 'checking' }); setIsAccountModalOpen(true) }} className="btn-primary">
+                <Plus className="w-5 h-5" /> Add Account
+              </button>
+            )}
+            {activeTab === 'categories' && (
+              <button onClick={() => { setEditingCategory(null); setCategoryForm({ name: '', color: PRESET_COLORS[0] }); setIsCategoryModalOpen(true) }} className="btn-primary">
+                <Plus className="w-5 h-5" /> Add Category
               </button>
             )}
           </div>
         </header>
 
-        {/* Tab Navigation */}
         <div className="flex flex-wrap gap-2 mb-8 bg-zinc-900/50 p-1.5 rounded-2xl border border-zinc-800 w-fit">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === tab.id ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
-            >
-              <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? 'text-blue-500' : ''}`} />
-              {tab.label}
+          {navTabs.map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === tab.id ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}>
+              <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? 'text-blue-500' : ''}`} /> {tab.label}
             </button>
           ))}
         </div>
 
-        {/* Tab Content */}
         <main className="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-3xl p-6 md:p-8 shadow-2xl min-h-[400px]">
+          
+          {/* TRANSACTIONS */}
           {activeTab === 'transactions' && (
-            <div className="animate-in fade-in duration-500">
-              <div className="flex justify-between items-center mb-6">
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
-                  <input 
-                    placeholder="Search transactions..."
-                    className="bg-zinc-950 border border-zinc-800 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
-                  />
-                </div>
-                <div className="flex gap-2 items-center">
-                  <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1">
-                    <span className="text-xs text-zinc-500 uppercase font-bold">From</span>
-                    <input 
-                      type="date" 
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="bg-transparent text-sm text-white focus:outline-none [color-scheme:dark]"
-                    />
-                    <span className="text-xs text-zinc-500 uppercase font-bold ml-2">To</span>
-                    <input 
-                      type="date" 
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="bg-transparent text-sm text-white focus:outline-none [color-scheme:dark]"
-                    />
+            <div className="animate-in fade-in">
+              <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                    <input placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 w-64" />
                   </div>
+                  <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1">
+                    <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-transparent text-sm text-white focus:outline-none [color-scheme:dark]" />
+                    <span className="text-xs text-zinc-500">TO</span>
+                    <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-transparent text-sm text-white focus:outline-none [color-scheme:dark]" />
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-4">
+                  <div className="text-sm text-zinc-400 font-medium px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg">
+                    Showing {displayedTxs.length} / {filteredTransactions.length}
+                  </div>
+                  <select value={txDisplayLimit} onChange={(e) => setTxDisplayLimit(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-white">
+                    <option value={25}>25 per page</option>
+                    <option value={50}>50 per page</option>
+                    <option value={100}>100 per page</option>
+                    <option value={250}>250 per page</option>
+                    <option value="all">All</option>
+                  </select>
                   {selectedTransactions.length > 0 && (
-                    <button 
-                      onClick={handleDeleteSelected}
-                      className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-sm font-bold border border-red-500/20 transition-all"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete {selectedTransactions.length}
-                    </button>
+                    <button onClick={handleDeleteSelectedTx} className="btn-danger-sm"><Trash2 className="w-4 h-4" /> Delete {selectedTransactions.length}</button>
                   )}
-                  <button className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-500 transition-colors">
-                    <Filter className="w-5 h-5" />
-                  </button>
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto rounded-xl border border-zinc-800/50">
                 <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
-                      <th className="px-4 py-4 w-10">
-                        <button 
-                          onClick={() => {
-                            if (selectedTransactions.length === transactions.length) {
-                              setSelectedTransactions([])
-                            } else {
-                              setSelectedTransactions(transactions.map(t => t.id!))
-                            }
-                          }}
-                          className="text-zinc-600 hover:text-blue-500 transition-colors"
-                        >
-                          {selectedTransactions.length === transactions.length && transactions.length > 0 ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                  <thead className="bg-zinc-950/50">
+                    <tr className="text-zinc-500 uppercase text-xs tracking-wider">
+                      <th className="px-4 py-3 w-10">
+                        <button onClick={() => setSelectedTransactions(selectedTransactions.length === displayedTxs.length ? [] : displayedTxs.map(t => t.id!))} className="text-zinc-600 hover:text-blue-500">
+                          {selectedTransactions.length === displayedTxs.length && displayedTxs.length > 0 ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                         </button>
                       </th>
-                      <th className="px-4 py-4">Date</th>
-                      <th className="px-4 py-4">Description</th>
-                      <th className="px-4 py-4">Category</th>
-                      <th className="px-4 py-4 text-right">Amount</th>
+                      <th className="px-4 py-3">Date</th>
+                      <th className="px-4 py-3">Description</th>
+                      <th className="px-4 py-3">Category</th>
+                      <th className="px-4 py-3 text-right">Amount</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/50">
-                    {filteredTransactions.map((t) => (
-                      <tr key={t.id} className={`group hover:bg-white/[0.02] transition-colors ${selectedTransactions.includes(t.id!) ? 'bg-blue-500/5' : ''}`}>
-                        <td className="px-4 py-5">
-                          <button 
-                            onClick={() => {
-                              if (selectedTransactions.includes(t.id!)) {
-                                setSelectedTransactions(selectedTransactions.filter(id => id !== t.id))
-                              } else {
-                                setSelectedTransactions([...selectedTransactions, t.id!])
-                              }
-                            }}
-                            className={`${selectedTransactions.includes(t.id!) ? 'text-blue-500' : 'text-zinc-700 group-hover:text-zinc-500'} transition-colors`}
-                          >
+                    {displayedTxs.map((t) => (
+                      <tr key={t.id} className={`group hover:bg-white/[0.02] ${selectedTransactions.includes(t.id!) ? 'bg-blue-500/5' : ''}`}>
+                        <td className="px-4 py-4">
+                          <button onClick={() => setSelectedTransactions(prev => prev.includes(t.id!) ? prev.filter(id => id !== t.id) : [...prev, t.id!])} className={selectedTransactions.includes(t.id!) ? 'text-blue-500' : 'text-zinc-700'}>
                             {selectedTransactions.includes(t.id!) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                           </button>
                         </td>
-                        <td className="px-4 py-5 text-zinc-400 font-mono text-xs">{new Date(t.transaction_date).toLocaleDateString()}</td>
-                        <td className="px-4 py-5 text-zinc-200">
+                        <td className="px-4 py-4 text-zinc-400 font-mono text-xs">{new Date(t.transaction_date).toLocaleDateString()}</td>
+                        <td className="px-4 py-4 text-zinc-200">
                           {t.description}
-                          <button 
-                            onClick={() => openCreateRuleModal(t)}
-                            className="ml-2 opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 rounded text-[10px] text-zinc-500 hover:text-blue-400 transition-all border border-zinc-700"
-                            title="Create Smart Category Rule"
-                          >
-                            Create Rule
-                          </button>
+                          <button onClick={() => {
+                            setRuleForm({ merchant_pattern: t.description.replace(/#\d+/g, '').replace(/\b[A-Z]{2}\b$/, '').trim(), category: t.category });
+                            setEditingRule(null); setIsRuleModalOpen(true);
+                          }} className="ml-2 opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-zinc-800 rounded text-[10px] text-zinc-500 hover:text-blue-400">Rule</button>
                         </td>
-                        <td className="px-4 py-5">
-                          <select
-                            value={t.category}
-                            onChange={(e) => handleInlineCategoryChange(t, e.target.value)}
-                            className="bg-transparent text-[10px] text-zinc-400 uppercase font-bold focus:outline-none focus:ring-1 focus:ring-blue-500 rounded p-1 border border-transparent hover:border-zinc-800 cursor-pointer"
-                          >
-                            <option value="Housing">Housing</option>
-                            <option value="Utilities">Utilities</option>
-                            <option value="Transportation">Transportation</option>
-                            <option value="Food">Food</option>
-                            <option value="Entertainment">Entertainment</option>
-                            <option value="Travel">Travel</option>
-                            <option value="General">General</option>
+                        <td className="px-4 py-4">
+                          <select value={t.category} onChange={(e) => handleInlineCategoryChange(t, e.target.value)} className="bg-transparent text-[10px] text-zinc-400 uppercase font-bold focus:ring-1 focus:ring-blue-500 rounded p-1">
+                            {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                           </select>
                         </td>
-                        <td className={`px-4 py-5 text-right font-mono ${t.amount < 0 ? 'text-red-400' : 'text-blue-400'}`}>
-                          {t.amount < 0 ? '-' : '+'}${Math.abs(t.amount).toFixed(2)}
+                        <td className={`px-4 py-4 text-right font-mono ${t.amount < 0 ? 'text-red-400' : 'text-blue-400'}`}>
+                          {t.amount < 0 ? '-' : '+'}{fmt(t.amount)}
                         </td>
                       </tr>
                     ))}
-                    {filteredTransactions.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="px-4 py-20 text-center text-zinc-600">
-                          No transactions found. Adjust your date filters or click &quot;Import CSV&quot;.
-                        </td>
-                      </tr>
-                    )}
+                    {displayedTxs.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-zinc-600">No transactions found.</td></tr>}
                   </tbody>
                 </table>
               </div>
+              {txDisplayLimit !== 'all' && displayedTxs.length < filteredTransactions.length && (
+                <div className="mt-6 flex justify-center">
+                  <button onClick={() => setTxDisplayLimit(prev => (prev as number) + 50)} className="btn-secondary">Show More Transactions</button>
+                </div>
+              )}
             </div>
           )}
 
+          {/* EXPENSES */}
           {activeTab === 'expenses' && (
-            <div className="animate-in fade-in duration-500">
+            <div className="animate-in fade-in">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
-                      <th className="px-4 py-4">Name</th>
-                      <th className="px-4 py-4">Category</th>
-                      <th className="px-4 py-4">Fixed</th>
-                      <th className="px-4 py-4 text-right">Monthly</th>
-                      <th className="px-4 py-4 text-right">Bi-Weekly</th>
-                      <th className="px-4 py-4 text-center">Account</th>
-                      <th className="px-4 py-4 text-right">Actions</th>
-                    </tr>
+                  <thead className="border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
+                    <tr><th className="p-4">Name</th><th className="p-4">Category</th><th className="p-4 text-center">Freq</th><th className="p-4 text-right">Monthly</th><th className="p-4 text-right">Bi-Weekly</th><th className="p-4 text-center">Account</th><th className="p-4 text-right">Actions</th></tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/50">
-                    {expenses.map((expense) => (
-                      <tr key={expense.id} className="group hover:bg-white/[0.02] transition-colors">
-                        <td className="px-4 py-5 font-medium text-zinc-200">{expense.name}</td>
-                        <td className="px-4 py-5 text-zinc-400">
-                          <span className="px-2 py-1 bg-zinc-800 rounded-md text-[10px] uppercase tracking-tighter">
-                            {expense.category}
-                          </span>
-                        </td>
-                        <td className="px-4 py-5 text-zinc-400">
-                          {expense.fixed ? (
-                            <CheckCircle2 className="w-4 h-4 text-blue-500" />
-                          ) : (
-                            <Circle className="w-4 h-4 text-zinc-700" />
-                          )}
-                        </td>
-                        <td className="px-4 py-5 text-right text-zinc-300">${Number(expense.monthly_amount).toFixed(2)}</td>
-                        <td className="px-4 py-5 text-right text-blue-500 font-mono">${Number(expense.bi_weekly_amount).toFixed(2)}</td>
-                        <td className="px-4 py-5 text-center text-zinc-500 text-xs font-mono">{expense.account_code}</td>
-                        <td className="px-4 py-5 text-right">
-                          <div className="flex justify-end gap-2">
-                            <button onClick={() => openEditModal(expense)} className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-500 hover:text-white transition-colors">
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button onClick={() => handleDeleteExpense(expense.id!)} className="p-1.5 hover:bg-red-500/10 rounded-md text-zinc-500 hover:text-red-400 transition-colors">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                    {expenses.map((e) => (
+                      <tr key={e.id} className="hover:bg-white/[0.02]">
+                        <td className="p-4 font-medium text-zinc-200">{e.name} {e.fixed && <CheckCircle2 className="inline w-3 h-3 text-blue-500 ml-1" />}</td>
+                        <td className="p-4"><span className="px-2 py-1 bg-zinc-800 rounded-md text-[10px] uppercase text-zinc-400">{e.category}</span></td>
+                        <td className="p-4 text-center text-zinc-500 text-xs capitalize">{e.frequency || 'Monthly'}</td>
+                        <td className="p-4 text-right text-zinc-300">{fmt(e.monthly_amount)}</td>
+                        <td className="p-4 text-right text-blue-500 font-mono">{fmt(e.bi_weekly_amount)}</td>
+                        <td className="p-4 text-center text-zinc-500 font-mono text-xs">{e.account_code}</td>
+                        <td className="p-4 text-right">
+                          <button onClick={() => { setEditingExpense(e); setExpenseForm({name: e.name, amount: getBaseAmount(e.monthly_amount, e.frequency||'monthly'), frequency: e.frequency||'monthly', category: e.category, fixed: e.fixed, account_code: e.account_code, due_date: e.due_date||''}); setIsExpenseModalOpen(true) }} className="btn-icon"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => del('expenses', e.id!)} className="btn-icon text-red-400 hover:text-red-300"><Trash2 className="w-4 h-4" /></button>
                         </td>
                       </tr>
                     ))}
-                    {expenses.length === 0 && (
-                      <tr>
-                        <td colSpan={7} className="px-4 py-20 text-center text-zinc-600">
-                          No expenses found. Click &quot;Add Expense&quot; to get started.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-          {activeTab === 'rules' && (
-            <div className="animate-in fade-in duration-500">
-              <div className="flex justify-between items-center mb-8">
-                <div>
-                  <h3 className="text-xl font-bold text-white">Categorization Rules</h3>
-                  <p className="text-sm text-zinc-500">Define how transactions are automatically categorized based on their description.</p>
-                </div>
-                <button 
-                  onClick={handleApplyRulesToAll}
-                  disabled={isApplyingRules}
-                  className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20 disabled:opacity-50"
-                >
-                  <Check className={`w-5 h-5 ${isApplyingRules ? 'animate-pulse' : ''}`} />
-                  Apply All Rules to Transactions
-                </button>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
-                      <th className="px-4 py-4">Merchant Pattern</th>
-                      <th className="px-4 py-4">Target Category</th>
-                      <th className="px-4 py-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/50">
-                    {categoryRules.map((rule) => (
-                      <tr key={rule.id} className="group hover:bg-white/[0.02] transition-colors">
-                        <td className="px-4 py-5 font-mono text-zinc-200">{rule.merchant_pattern}</td>
-                        <td className="px-4 py-5">
-                          <span className="px-2 py-1 bg-zinc-800 rounded-md text-[10px] uppercase tracking-tighter text-blue-400 border border-blue-500/10">
-                            {rule.category}
-                          </span>
-                        </td>
-                        <td className="px-4 py-5 text-right">
-                          <div className="flex justify-end gap-2">
-                            <button 
-                              onClick={() => openEditRuleModal(rule)}
-                              className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-500 hover:text-white transition-colors"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteRule(rule.id!)}
-                              className="p-1.5 hover:bg-red-500/10 rounded-md text-zinc-500 hover:text-red-400 transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {categoryRules.length === 0 && (
-                      <tr>
-                        <td colSpan={3} className="px-4 py-20 text-center text-zinc-600">
-                          No rules found. Save a rule from the Transactions tab to see it here.
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
 
-          {activeTab === 'summary' && (
-            <div className="animate-in fade-in duration-500 space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* INCOME */}
+          {activeTab === 'income' && (
+            <div className="animate-in fade-in space-y-8">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
-                  <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-1">Total Bi-Weekly</p>
-                  <p className="text-3xl font-bold text-white font-mono">${totalBiWeekly.toFixed(2)}</p>
+                  <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-1">Average Gross</p>
+                  <p className="text-3xl font-bold text-white font-mono">{fmt(avgGross)}</p>
                 </div>
                 <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
-                  <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-1">Total Monthly</p>
-                  <p className="text-3xl font-bold text-white font-mono">${totalMonthly.toFixed(2)}</p>
-                </div>
-                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
-                  <p className="text-blue-500/70 text-xs uppercase font-bold tracking-widest mb-1">Fixed Bills</p>
-                  <p className="text-3xl font-bold text-white font-mono">
-                    ${totalFixedMonthly.toFixed(2)}
-                  </p>
-                  <p className="text-[10px] text-zinc-500 mt-1">{fixedExpenses.length} items</p>
-                </div>
-                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
-                  <p className="text-orange-500/70 text-xs uppercase font-bold tracking-widest mb-1">Variable</p>
-                  <p className="text-3xl font-bold text-white font-mono">
-                    ${totalVariableMonthly.toFixed(2)}
-                  </p>
-                  <p className="text-[10px] text-zinc-500 mt-1">{variableExpenses.length} items</p>
+                  <p className="text-blue-500/70 text-xs uppercase font-bold tracking-widest mb-1">Average Net</p>
+                  <p className="text-3xl font-bold text-blue-400 font-mono">{fmt(avgNet)}</p>
                 </div>
               </div>
 
-              {/* Analytics Section */}
-              <div className="flex justify-between items-center bg-zinc-950/50 p-2 rounded-xl border border-zinc-800 w-fit">
-                {(['bi-weekly', 'monthly', 'yearly'] as const).map(view => (
-                  <button
-                    key={view}
-                    onClick={() => setTotalsView(view)}
-                    className={`px-4 py-2 rounded-lg text-sm font-bold capitalize transition-all ${totalsView === view ? 'bg-zinc-800 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'}`}
-                  >
-                    {view}
-                  </button>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
+                    <tr><th className="p-4">Pay Period Label</th><th className="p-4">Pay Date</th><th className="p-4 text-right">Gross</th><th className="p-4 text-right">Net</th><th className="p-4 text-right">Actions</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/50">
+                    {incomeSources.map(i => (
+                      <tr key={i.id} className="hover:bg-white/[0.02]">
+                        <td className="p-4 text-zinc-200">{i.employer_name}</td>
+                        <td className="p-4 text-zinc-400 font-mono">{i.pay_date ? new Date(i.pay_date).toLocaleDateString() : '-'}</td>
+                        <td className="p-4 text-right text-zinc-400">{fmt(i.gross_amount||0)}</td>
+                        <td className="p-4 text-right text-blue-400 font-mono font-bold">{fmt(i.net_amount||0)}</td>
+                        <td className="p-4 text-right">
+                          <button onClick={() => { setEditingIncome(i); setIncomeForm(i); setIsIncomeModalOpen(true) }} className="btn-icon"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => del('income_sources', i.id!)} className="btn-icon text-red-400"><Trash2 className="w-4 h-4" /></button>
+                        </td>
+                      </tr>
+                    ))}
+                    {incomeSources.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-zinc-600">No paychecks recorded.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* DIRECT DEPOSIT */}
+          {activeTab === 'direct-deposit' && (
+            <div className="animate-in fade-in">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
+                    <tr><th className="p-4">Account Name</th><th className="p-4">Acct Code</th><th className="p-4">Type</th><th className="p-4 text-right">Req. Funding</th><th className="p-4 text-right">Target DD</th><th className="p-4 text-right">Actions</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/50">
+                    {accountMath.map((acc, i) => {
+                      const dbAcc = accounts.find(a => a.account_code === acc.code)
+                      return (
+                      <tr key={i} className="hover:bg-white/[0.02]">
+                        <td className="p-4 text-zinc-200 font-medium">{acc.name}</td>
+                        <td className="p-4 text-zinc-500 font-mono text-xs">{acc.code}</td>
+                        <td className="p-4 text-zinc-400 capitalize">{dbAcc?.type || 'Checking'}</td>
+                        <td className="p-4 text-right text-zinc-400 font-mono">{fmt(acc.required)}</td>
+                        <td className="p-4 text-right text-blue-400 font-mono font-bold text-lg">{fmt(acc.directDeposit)}</td>
+                        <td className="p-4 text-right">
+                          <button onClick={() => { if(dbAcc){ setEditingAccount(dbAcc); setAccountForm(dbAcc); setIsAccountModalOpen(true) } }} className="btn-icon"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => { if(dbAcc) del('accounts', dbAcc.id!) }} className="btn-icon text-red-400"><Trash2 className="w-4 h-4" /></button>
+                        </td>
+                      </tr>
+                    )})}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* CATEGORIES */}
+          {activeTab === 'categories' && (
+            <div className="animate-in fade-in">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {categories.map(c => (
+                  <div key={c.id} className="bg-zinc-950/50 border border-zinc-800 p-4 rounded-2xl flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color }} />
+                      <span className="text-zinc-200 font-bold">{c.name}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => { setEditingCategory(c); setCategoryForm(c); setIsCategoryModalOpen(true) }} className="btn-icon"><Edit2 className="w-4 h-4" /></button>
+                      <button onClick={() => del('categories', c.id!)} className="btn-icon text-red-400"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* RULES */}
+          {activeTab === 'rules' && (
+            <div className="animate-in fade-in">
+              <button onClick={handleApplyRulesToAll} disabled={isApplyingRules} className="btn-secondary mb-6"><Check className={`w-4 h-4 ${isApplyingRules ? 'animate-pulse' : ''}`} /> Apply Rules to All Transactions</button>
+              <div className="overflow-x-auto border border-zinc-800 rounded-xl">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-zinc-950/50 border-b border-zinc-800 text-zinc-500 uppercase text-xs">
+                    <tr><th className="p-4">Pattern</th><th className="p-4">Category</th><th className="p-4 text-right">Actions</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/50">
+                    {categoryRules.map(r => (
+                      <tr key={r.id}>
+                        <td className="p-4 text-zinc-200 font-mono">{r.merchant_pattern}</td>
+                        <td className="p-4 text-blue-400">{r.category}</td>
+                        <td className="p-4 text-right">
+                          <button onClick={() => { setEditingRule(r); setRuleForm(r); setIsRuleModalOpen(true) }} className="btn-icon"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => del('category_rules', r.id!)} className="btn-icon text-red-400"><Trash2 className="w-4 h-4" /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* SUMMARY */}
+          {activeTab === 'summary' && (
+            <div className="animate-in fade-in space-y-8">
+              {/* Category Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {categories.map(c => {
+                  const amt = categoryDataMap[c.name] || 0
+                  if (amt === 0) return null
+                  return (
+                    <div key={c.id} className="bg-zinc-950/50 border border-zinc-800 p-4 rounded-xl border-l-4" style={{ borderLeftColor: c.color }}>
+                      <p className="text-zinc-500 text-xs uppercase font-bold">{c.name}</p>
+                      <p className="text-2xl font-bold text-white font-mono mt-1">{fmt(amt)}</p>
+                    </div>
+                  )
+                })}
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                
-                {/* Net Pay vs Expenses */}
                 <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="text-lg font-bold text-white capitalize">{totalsView} Cash Flow</h3>
-                    <div className={`px-3 py-1 rounded-full text-xs font-bold border ${netCashFlow >= 0 ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
-                      {netCashFlow >= 0 ? '+' : '-'}${Math.abs(netCashFlow).toFixed(2)} Leftover
-                    </div>
                   </div>
                   <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={netPayVsExpensesData}>
+                      <BarChart data={[{ name: 'Income', value: viewNetPay, fill: '#3b82f6' }, { name: 'Expenses', value: viewExpenses, fill: '#f43f5e' }]}>
                         <XAxis dataKey="name" stroke="#52525b" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#52525b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
-                        <Tooltip cursor={{ fill: '#27272a', opacity: 0.4 }} contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} itemStyle={{ color: '#fff' }} />
+                        <YAxis stroke="#52525b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
+                        <Tooltip cursor={{ fill: '#27272a', opacity: 0.4 }} contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} />
                         <Bar dataKey="value" radius={[6, 6, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
 
-                {/* Pay Breakdown */}
                 <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
-                  <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-bold text-white capitalize">{totalsView} Pay Breakdown</h3>
-                    <div className="text-xs font-mono text-zinc-400">
-                      Gross: ${viewGross.toFixed(2)}
-                    </div>
-                  </div>
+                  <h3 className="text-lg font-bold text-white mb-6">Budget vs Actual (30 Days)</h3>
                   <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={payBreakdownData}>
-                        <XAxis dataKey="name" stroke="#52525b" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#52525b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
-                        <Tooltip cursor={{ fill: '#27272a', opacity: 0.4 }} contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} itemStyle={{ color: '#fff' }} />
-                        <Bar dataKey="value" radius={[6, 6, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Category Comparison: Budget vs Actual */}
-                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl lg:col-span-2">
-                  <h3 className="text-lg font-bold text-white mb-6">Budget vs. Actual Spending (Last 30 Days)</h3>
-                  <div className="h-80">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={budgetVsActualData}>
                         <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
-                        <Tooltip cursor={{ fill: '#27272a', opacity: 0.4 }} contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} itemStyle={{ color: '#fff' }} />
-                        <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', color: '#a1a1aa', paddingTop: '20px' }} />
+                        <YAxis stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
+                        <Tooltip cursor={{ fill: '#27272a', opacity: 0.4 }} contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} />
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
                         <Bar dataKey="Budgeted" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                         <Bar dataKey="Actual" fill="#f43f5e" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
-
-                {/* Emergency Fund Calculator */}
-                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl flex flex-col justify-between">
-                  <div>
-                    <h3 className="text-lg font-bold text-white mb-2">Emergency Fund Calculator</h3>
-                    <p className="text-sm text-zinc-500 mb-6">Based on your fixed bills of <span className="text-zinc-300 font-mono">${totalFixedMonthly.toFixed(2)}</span>/mo.</p>
-                    
-                    <div className="mb-8">
-                      <div className="flex justify-between text-xs text-zinc-400 font-bold mb-4">
-                        <span>1 Month</span>
-                        <span className="text-blue-500 text-lg">{emergencyMonths} Months</span>
-                        <span>12 Months</span>
-                      </div>
-                      <input 
-                        type="range" 
-                        min="1" 
-                        max="12" 
-                        value={emergencyMonths} 
-                        onChange={(e) => setEmergencyMonths(Number(e.target.value))}
-                        className="w-full h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 text-center">
-                    <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-2">Savings Goal</p>
-                    <p className="text-5xl font-bold text-white font-mono">${emergencyGoal.toFixed(2)}</p>
-                  </div>
-                </div>
-
-                {/* Category Breakdown */}
-                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
-                  <h3 className="text-lg font-bold text-white mb-6">Expenses by Category</h3>
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={categoryData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={80}
-                          paddingAngle={5}
-                          dataKey="value"
-                        >
-                          {categoryData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} itemStyle={{ color: '#fff' }} formatter={(val: unknown) => `$${Number(val).toFixed(2)}`} />
-                        <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', color: '#a1a1aa' }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Fixed vs Variable */}
-                <div className="bg-zinc-950/50 border border-zinc-800 p-6 rounded-2xl">
-                  <h3 className="text-lg font-bold text-white mb-6">Fixed vs. Variable</h3>
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={fixedVsVariableData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={80}
-                          paddingAngle={5}
-                          dataKey="value"
-                        >
-                          {fixedVsVariableData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} itemStyle={{ color: '#fff' }} formatter={(val: unknown) => `$${Number(val).toFixed(2)}`} />
-                        <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', color: '#a1a1aa' }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'direct-deposit' && (
-            <div className="animate-in fade-in duration-500">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-                <h3 className="text-xl font-bold text-white">Direct Deposit Routing</h3>
-                <div className="flex gap-2">
-                  <span className="px-3 py-1 bg-zinc-800 rounded-full text-[10px] text-zinc-400 font-bold border border-zinc-700 uppercase tracking-wider">
-                    {incomeSources.length} Sources
-                  </span>
-                  <span className="px-3 py-1 bg-blue-500/10 rounded-full text-[10px] text-blue-500 font-bold border border-blue-500/20 uppercase tracking-wider">
-                    Rounds to ${roundUpTarget}
-                  </span>
-                </div>
-              </div>
-              
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-zinc-400">
-                  <thead>
-                    <tr className="border-b border-zinc-800 text-zinc-500 uppercase text-xs tracking-wider">
-                      <th className="px-4 py-4">Account</th>
-                      <th className="px-4 py-4 text-right">Required Funding</th>
-                      <th className="px-4 py-4 text-right">Target Direct Deposit</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/50">
-                    {accountMath.length === 0 ? (
-                      <tr>
-                        <td colSpan={3} className="px-4 py-12 text-center text-zinc-600">
-                          No accounts configured yet.
-                        </td>
-                      </tr>
-                    ) : (
-                      accountMath.map((acc, idx) => (
-                        <tr key={idx} className="group hover:bg-white/[0.02] transition-colors">
-                          <td className="px-4 py-5 font-medium text-zinc-200">
-                            {acc.name} 
-                            <span className="text-zinc-600 text-xs ml-2 font-normal font-mono">({acc.code})</span>
-                          </td>
-                          <td className="px-4 py-5 text-right font-mono text-zinc-400">${acc.required.toFixed(2)}</td>
-                          <td className="px-4 py-5 text-right font-bold text-blue-400 font-mono text-lg">
-                            ${acc.directDeposit.toFixed(2)}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                  {accountMath.length > 0 && (
-                    <tfoot>
-                      <tr className="border-t-2 border-zinc-800 text-white font-bold">
-                        <td className="px-4 py-6 text-lg">Total Paycheck Need</td>
-                        <td className="px-4 py-6 text-right text-lg font-mono text-zinc-300">${totalBiWeekly.toFixed(2)}</td>
-                        <td className="px-4 py-6 text-right text-2xl text-blue-400 font-mono">
-                          ${totalDirectDeposit.toFixed(2)}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
               </div>
             </div>
           )}
         </main>
       </div>
 
+      {/* MODALS */}
+
       {/* Import Modal */}
       {isImportModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-zinc-950/80 backdrop-blur-sm" onClick={() => setIsImportModalOpen(false)} />
-          <div className="relative bg-zinc-900 border border-zinc-800 w-full max-w-4xl rounded-3xl p-8 shadow-2xl animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex justify-between items-center mb-8">
-              <div>
-                <h2 className="text-2xl font-bold text-white">Import Transactions</h2>
-                <p className="text-zinc-500 text-sm">Upload a Chase, Caesars, or generic CSV statement.</p>
-              </div>
-              <button onClick={() => setIsImportModalOpen(false)} className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500">
-                <X className="w-6 h-6" />
-              </button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-4xl rounded-3xl p-8 max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">Import CSV</h2>
+              <button onClick={() => setIsImportModalOpen(false)} className="btn-icon"><X className="w-6 h-6" /></button>
             </div>
-
-            <div className="flex flex-col md:flex-row gap-6 mb-8">
-              <label 
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                    const file = e.dataTransfer.files[0];
-                    if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-                      processCSVFile(file);
-                    }
-                  }
-                }}
-                className="flex-1 flex flex-col items-center justify-center h-32 border-2 border-zinc-800 border-dashed rounded-2xl cursor-pointer bg-zinc-950 hover:bg-zinc-900 transition-all"
-              >
-                <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                  <Upload className="w-8 h-8 text-zinc-500 mb-2" />
-                  <p className="text-sm text-zinc-500">Click to upload or drag and drop CSV</p>
-                </div>
+            
+            <div className="flex gap-4 mb-6">
+              <label className="flex-1 flex flex-col items-center justify-center h-32 border-2 border-zinc-800 border-dashed rounded-2xl cursor-pointer hover:bg-zinc-800/50">
+                <Upload className="w-8 h-8 text-zinc-500 mb-2" />
+                <span className="text-sm text-zinc-500">Click to upload CSV</span>
                 <input type="file" className="hidden" accept=".csv" onChange={handleFileUpload} />
               </label>
-
               <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 flex flex-col justify-center gap-2">
-                <div className="flex items-center gap-3">
-                  <input 
-                    type="checkbox"
-                    id="flip-amounts"
-                    checked={flipAmounts}
-                    onChange={e => {
-                      setFlipAmounts(e.target.checked)
-                      // Re-parse if preview exists
-                      if (importPreview.length > 0) {
-                        setImportPreview(importPreview.map(t => ({ ...t, amount: t.amount * -1 })))
-                      }
-                    }}
-                    className="w-5 h-5 rounded border-zinc-800 bg-zinc-900 text-blue-500 focus:ring-blue-500"
-                  />
-                  <label htmlFor="flip-amounts" className="text-sm font-medium text-zinc-300 cursor-pointer">
-                    Flip Amounts (+/-)
-                  </label>
-                </div>
-                <p className="text-[10px] text-zinc-500 max-w-[200px]">
-                  Enable this if charges are imported as positive numbers.
-                </p>
+                {autoFlipDetected && <span className="text-xs text-blue-400 font-bold bg-blue-500/10 px-2 py-1 rounded w-fit">Auto-detected!</span>}
+                <label className="flex items-center gap-3 text-sm font-medium text-zinc-300 cursor-pointer">
+                  <input type="checkbox" checked={flipAmounts} onChange={e => { setFlipAmounts(e.target.checked); if(importPreview.length) setImportPreview(importPreview.map(t=>({...t, amount: t.amount*-1}))) }} className="rounded border-zinc-800 bg-zinc-900 text-blue-500" />
+                  Flip Amounts (+/-)
+                </label>
+                <p className="text-[10px] text-zinc-500">Enable if charges are positive.</p>
               </div>
             </div>
 
             {importPreview.length > 0 && (
               <div className="flex-1 overflow-hidden flex flex-col">
-                <h3 className="text-lg font-bold text-white mb-4">Preview ({importPreview.length} items)</h3>
-                <div className="flex-1 overflow-auto border border-zinc-800 rounded-xl">
+                <div className="flex-1 overflow-auto border border-zinc-800 rounded-xl mb-6">
                   <table className="w-full text-left text-xs">
-                    <thead className="sticky top-0 bg-zinc-900 border-b border-zinc-800">
-                      <tr className="text-zinc-500 uppercase tracking-wider">
-                        <th className="px-4 py-3">Date</th>
-                        <th className="px-4 py-3">Description</th>
-                        <th className="px-4 py-3">Category</th>
-                        <th className="px-4 py-3 text-right">Amount</th>
-                      </tr>
-                    </thead>
+                    <thead className="sticky top-0 bg-zinc-900 border-b border-zinc-800"><tr className="text-zinc-500 uppercase"><th className="p-3">Date</th><th className="p-3">Desc</th><th className="p-3">Cat</th><th className="p-3 text-right">Amt</th></tr></thead>
                     <tbody className="divide-y divide-zinc-800/50">
-                      {importPreview.map((t, idx) => (
-                        <tr key={idx} className="text-zinc-400">
-                          <td className="px-4 py-3 font-mono">{t.transaction_date}</td>
-                          <td className="px-4 py-3 truncate max-w-xs">{t.description}</td>
-                          <td className="px-4 py-3">{t.category}</td>
-                          <td className={`px-4 py-3 text-right font-mono ${t.amount < 0 ? 'text-red-400' : 'text-blue-400'}`}>
-                            ${t.amount.toFixed(2)}
-                          </td>
-                        </tr>
+                      {importPreview.map((t, i) => (
+                        <tr key={i} className="text-zinc-400"><td className="p-3">{t.transaction_date}</td><td className="p-3 truncate">{t.description}</td><td className="p-3">{t.category}</td><td className={`p-3 text-right ${t.amount<0?'text-red-400':'text-blue-400'}`}>{fmt(t.amount)}</td></tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-                <div className="pt-8 mt-auto">
-                  <button 
-                    disabled={importLoading}
-                    onClick={handleImportTransactions}
-                    className="w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-zinc-950 font-bold py-4 rounded-2xl transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
-                  >
-                    {importLoading ? 'Importing...' : `Confirm Import (${importPreview.length} Transactions)`}
-                  </button>
-                </div>
+                <button disabled={importLoading} onClick={handleImportTransactions} className="btn-primary py-4 justify-center w-full">{importLoading ? 'Importing...' : `Confirm ${importPreview.length} Items`}</button>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Expense Modal (Unchanged) */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-zinc-950/80 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-          <div className="relative bg-zinc-900 border border-zinc-800 w-full max-w-lg rounded-3xl p-8 shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-bold text-white">{editingExpense ? 'Edit Expense' : 'Add New Expense'}</h2>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveExpense} className="space-y-6">
+      {/* Expense Modal */}
+      {isExpenseModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-lg rounded-3xl p-8">
+            <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-white">{editingExpense ? 'Edit' : 'Add'} Expense</h2><button onClick={() => setIsExpenseModalOpen(false)} className="btn-icon"><X/></button></div>
+            <form onSubmit={handleSaveExpense} className="space-y-4">
+              <div><label className="text-xs font-bold text-zinc-500 uppercase">Name</label><input required value={expenseForm.name} onChange={e=>setExpenseForm({...expenseForm, name: e.target.value})} className="input-field" /></div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">Expense Name</label>
-                  <input 
-                    required
-                    value={formState.name}
-                    onChange={e => setFormState({ ...formState, name: e.target.value })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g. Rent, Internet, Car Payment"
-                  />
-                </div>
-                
+                <div><label className="text-xs font-bold text-zinc-500 uppercase">Amount</label><input required type="number" step="0.01" value={expenseForm.amount} onChange={e=>setExpenseForm({...expenseForm, amount: +e.target.value})} className="input-field" /></div>
                 <div>
-                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">Monthly Amount</label>
-                  <input 
-                    type="number"
-                    step="0.01"
-                    value={formState.monthly_amount}
-                    onChange={e => {
-                      const val = Number(e.target.value)
-                      setFormState({ ...formState, monthly_amount: val, bi_weekly_amount: Number((val / 2).toFixed(2)) })
-                    }}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">Bi-Weekly Amount</label>
-                  <input 
-                    type="number"
-                    step="0.01"
-                    value={formState.bi_weekly_amount}
-                    onChange={e => setFormState({ ...formState, bi_weekly_amount: Number(e.target.value) })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">Category</label>
-                  <select 
-                    value={formState.category}
-                    onChange={e => setFormState({ ...formState, category: e.target.value })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="Housing">Housing</option>
-                    <option value="Utilities">Utilities</option>
-                    <option value="Transportation">Transportation</option>
-                    <option value="Food">Food</option>
-                    <option value="Entertainment">Entertainment</option>
-                    <option value="General">General</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">Target Account</label>
-                  <select 
-                    value={formState.account_code}
-                    onChange={e => setFormState({ ...formState, account_code: e.target.value })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                  >
-                    {accounts.map(acc => (
-                      <option key={acc.account_code} value={acc.account_code}>{acc.name} ({acc.account_code})</option>
-                    ))}
+                  <label className="text-xs font-bold text-zinc-500 uppercase">Frequency</label>
+                  <select value={expenseForm.frequency} onChange={e=>setExpenseForm({...expenseForm, frequency: e.target.value})} className="input-field capitalize">
+                    {['daily','weekly','bi-weekly','monthly','yearly'].map(f=><option key={f} value={f}>{f}</option>)}
                   </select>
                 </div>
               </div>
-
-              <div className="flex items-center gap-3 p-4 bg-zinc-950 rounded-2xl border border-zinc-800">
-                <input 
-                  type="checkbox"
-                  id="fixed"
-                  checked={formState.fixed}
-                  onChange={e => setFormState({ ...formState, fixed: e.target.checked })}
-                  className="w-5 h-5 rounded border-zinc-800 bg-zinc-900 text-blue-500 focus:ring-blue-500"
-                />
-                <label htmlFor="fixed" className="text-sm font-medium text-zinc-300 cursor-pointer">
-                  Mark as Fixed Bill
-                  <span className="block text-xs text-zinc-500 font-normal">Fixed bills are used for Emergency Fund calculations.</span>
-                </label>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="text-xs font-bold text-zinc-500 uppercase">Category</label><select value={expenseForm.category} onChange={e=>setExpenseForm({...expenseForm, category: e.target.value})} className="input-field">{categories.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
+                <div><label className="text-xs font-bold text-zinc-500 uppercase">Account</label><select value={expenseForm.account_code} onChange={e=>setExpenseForm({...expenseForm, account_code: e.target.value})} className="input-field">{accounts.map(a=><option key={a.id} value={a.account_code}>{a.name} ({a.account_code})</option>)}</select></div>
               </div>
-
-              <button 
-                type="submit"
-                className="w-full bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-4 rounded-2xl transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
-              >
-                <Save className="w-5 h-5" />
-                {editingExpense ? 'Update Expense' : 'Save Expense'}
-              </button>
+              <label className="flex items-center gap-3 p-4 bg-zinc-950 border border-zinc-800 rounded-xl cursor-pointer">
+                <input type="checkbox" checked={expenseForm.fixed} onChange={e=>setExpenseForm({...expenseForm, fixed: e.target.checked})} className="rounded bg-zinc-900 border-zinc-700 text-blue-500"/>
+                <div><p className="text-sm font-bold text-zinc-200">Fixed Bill</p><p className="text-xs text-zinc-500">Used for emergency fund math</p></div>
+              </label>
+              <button type="submit" className="btn-primary w-full justify-center py-3"><Save className="w-4 h-4"/> Save</button>
             </form>
           </div>
         </div>
       )}
 
-      {/* Smart Rule Modal */}
+      {/* Income Modal */}
+      {isIncomeModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-8">
+            <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-white">{editingIncome ? 'Edit' : 'Add'} Paycheck</h2><button onClick={() => setIsIncomeModalOpen(false)} className="btn-icon"><X/></button></div>
+            <form onSubmit={handleSaveIncome} className="space-y-4">
+              <div><label className="text-xs font-bold text-zinc-500 uppercase">Pay Period Label</label><input required value={incomeForm.employer_name} onChange={e=>setIncomeForm({...incomeForm, employer_name: e.target.value})} placeholder="e.g. May 1-15" className="input-field" /></div>
+              <div><label className="text-xs font-bold text-zinc-500 uppercase">Pay Date</label><input required type="date" value={incomeForm.pay_date} onChange={e=>setIncomeForm({...incomeForm, pay_date: e.target.value})} className="input-field [color-scheme:dark]" /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="text-xs font-bold text-zinc-500 uppercase">Gross Amount</label><input required type="number" step="0.01" value={incomeForm.gross_amount} onChange={e=>setIncomeForm({...incomeForm, gross_amount: +e.target.value})} className="input-field" /></div>
+                <div><label className="text-xs font-bold text-zinc-500 uppercase">Net Amount</label><input required type="number" step="0.01" value={incomeForm.net_amount} onChange={e=>setIncomeForm({...incomeForm, net_amount: +e.target.value})} className="input-field" /></div>
+              </div>
+              <button type="submit" className="btn-primary w-full justify-center py-3"><Save className="w-4 h-4"/> Save</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Account Modal */}
+      {isAccountModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-8">
+            <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-white">{editingAccount ? 'Edit' : 'Add'} Account</h2><button onClick={() => setIsAccountModalOpen(false)} className="btn-icon"><X/></button></div>
+            <form onSubmit={handleSaveAccount} className="space-y-4">
+              <div><label className="text-xs font-bold text-zinc-500 uppercase">Account Name</label><input required value={accountForm.name} onChange={e=>setAccountForm({...accountForm, name: e.target.value})} className="input-field" /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="text-xs font-bold text-zinc-500 uppercase">Code / Last 4</label><input required value={accountForm.account_code} onChange={e=>setAccountForm({...accountForm, account_code: e.target.value})} className="input-field font-mono" /></div>
+                <div><label className="text-xs font-bold text-zinc-500 uppercase">Type</label><select value={accountForm.type} onChange={e=>setAccountForm({...accountForm, type: e.target.value})} className="input-field"><option value="checking">Checking</option><option value="savings">Savings</option></select></div>
+              </div>
+              <button type="submit" className="btn-primary w-full justify-center py-3"><Save className="w-4 h-4"/> Save</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Category Modal */}
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-8">
+            <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-white">{editingCategory ? 'Edit' : 'Add'} Category</h2><button onClick={() => setIsCategoryModalOpen(false)} className="btn-icon"><X/></button></div>
+            <form onSubmit={handleSaveCategory} className="space-y-6">
+              <div><label className="text-xs font-bold text-zinc-500 uppercase">Name</label><input required value={categoryForm.name} onChange={e=>setCategoryForm({...categoryForm, name: e.target.value})} className="input-field" /></div>
+              <div>
+                <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Color</label>
+                <div className="flex flex-wrap gap-2">
+                  {PRESET_COLORS.map(color => (
+                    <button key={color} type="button" onClick={() => setCategoryForm({...categoryForm, color})} className={`w-8 h-8 rounded-full border-2 transition-all ${categoryForm.color === color ? 'border-white scale-110' : 'border-transparent hover:scale-110'}`} style={{ backgroundColor: color }} />
+                  ))}
+                </div>
+              </div>
+              <button type="submit" className="btn-primary w-full justify-center py-3"><Save className="w-4 h-4"/> Save</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Rule Modal */}
       {isRuleModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center mb-8">
-              <div>
-                <h2 className="text-2xl font-bold text-white">{editingRule ? 'Edit Category Rule' : 'Create Smart Rule'}</h2>
-                <p className="text-sm text-zinc-500 mt-1">
-                  Transactions containing this pattern will automatically be categorized.
-                </p>
-              </div>
-              <button onClick={() => setIsRuleModalOpen(false)} className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500 self-start">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveRuleSubmit} className="space-y-6">
-              <div>
-                <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">Merchant Pattern</label>
-                <input 
-                  required
-                  value={ruleForm.merchant_pattern}
-                  onChange={e => setRuleForm({ ...ruleForm, merchant_pattern: e.target.value })}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                  placeholder="e.g. WAL-MART, CAESARS, NETFLIX"
-                />
-                <p className="text-xs text-zinc-600 mt-2">
-                  Keep it short and general (e.g. use &quot;WAL-MART&quot; instead of &quot;WAL-MART #1234 VEGAS NV&quot;) to match more transactions.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">Assign Category</label>
-                <select 
-                  value={ruleForm.category}
-                  onChange={e => setRuleForm({ ...ruleForm, category: e.target.value })}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="Housing">Housing</option>
-                  <option value="Utilities">Utilities</option>
-                  <option value="Transportation">Transportation</option>
-                  <option value="Food">Food</option>
-                  <option value="Entertainment">Entertainment</option>
-                  <option value="Travel">Travel</option>
-                  <option value="General">General</option>
-                </select>
-              </div>
-
-              <button 
-                type="submit"
-                className="w-full bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-4 rounded-2xl transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
-              >
-                <Save className="w-5 h-5" />
-                {editingRule ? 'Update Rule' : 'Save Smart Rule'}
-              </button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-8">
+            <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-white">Rule</h2><button onClick={() => setIsRuleModalOpen(false)} className="btn-icon"><X/></button></div>
+            <form onSubmit={handleSaveRule} className="space-y-4">
+              <div><label className="text-xs font-bold text-zinc-500 uppercase">Pattern</label><input required value={ruleForm.merchant_pattern} onChange={e=>setRuleForm({...ruleForm, merchant_pattern: e.target.value})} className="input-field font-mono" /></div>
+              <div><label className="text-xs font-bold text-zinc-500 uppercase">Category</label><select value={ruleForm.category} onChange={e=>setRuleForm({...ruleForm, category: e.target.value})} className="input-field">{categories.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
+              <button type="submit" className="btn-primary w-full justify-center py-3"><Save className="w-4 h-4"/> Save</button>
             </form>
           </div>
         </div>
       )}
+
     </div>
   )
 }
