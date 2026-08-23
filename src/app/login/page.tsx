@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/utils/supabase/client'
+import { signIn } from '@/lib/auth-client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -11,40 +11,38 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const res = await signIn.email({
       email,
       password,
+      callbackURL: '/dashboard',
     })
 
-    if (error) {
-      setError(error.message)
+    if (res.error) {
+      setError(res.error.message || 'Failed to sign in. Please check your credentials.')
       setLoading(false)
       return
     }
 
-    router.push('/')
+    router.push('/dashboard')
     router.refresh()
   }
 
   const handleGoogleLogin = async () => {
     setLoading(true)
     setError(null)
-    const { error } = await supabase.auth.signInWithOAuth({
+    const res = await signIn.social({
       provider: 'google',
-      options: {
-        redirectTo: `${location.origin}/auth/callback`,
-      },
+      callbackURL: '/dashboard',
     })
 
-    if (error) {
-      setError(error.message)
+    if (res.error) {
+      setError(res.error.message || 'Failed to sign in with Google.')
       setLoading(false)
     }
   }
@@ -101,7 +99,7 @@ export default function LoginPage() {
                 disabled={loading}
                 className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Sign In
+                {loading ? 'Signing in...' : 'Sign In'}
               </button>
               <p className="text-center text-sm text-zinc-500">
                 Don&apos;t have an account?{' '}

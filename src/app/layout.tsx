@@ -7,8 +7,16 @@ import Footer from "@/components/Footer";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "ShoeBudgeting | Shoetinblanks LLC",
-  description: "Personal finance and budget management platform provided by Shoetinblanks LLC.",
+  title: "Shoe Budgeting",
+  applicationName: "Shoe Budgeting",
+  description: "Shoe Budgeting is a personal finance and budget management platform provided by Shoetinblanks LLC to help you track expenses, categorize income, parse check stubs, and manage your budget.",
+  openGraph: {
+    title: "Shoe Budgeting",
+    description: "Shoe Budgeting is a personal finance platform provided by Shoetinblanks LLC to manage budgets, expenses, and cash flow.",
+    url: "https://budget.shoetinblanks.com",
+    siteName: "Shoe Budgeting",
+    type: "website",
+  },
 };
 
 export default function RootLayout({

@@ -34,3 +34,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+budget-app_audit.md
+# Secrets
+*.env
+*.env.*
+.env*.local
+secrets/

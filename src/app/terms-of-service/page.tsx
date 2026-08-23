@@ -9,8 +9,8 @@ export default function TermsOfServicePage() {
         <section>
           <h2 className="text-xl font-semibold text-white mb-3">1. Agreement to Terms</h2>
           <p>
-            By accessing or using the ShoeBudgeting platform, you agree to be bound by these Terms of Service. 
-            ShoeBudgeting is a service provided by Shoetinblanks LLC (&quot;we&quot;, &quot;us&quot;, or &quot;our&quot;). If you disagree with 
+            By accessing or using the Shoe Budgeting platform, you agree to be bound by these Terms of Service. 
+            Shoe Budgeting is a service provided by Shoetinblanks LLC (&quot;we&quot;, &quot;us&quot;, or &quot;our&quot;). If you disagree with 
             any part of the terms, you may not access the service.
           </p>
         </section>
@@ -18,7 +18,7 @@ export default function TermsOfServicePage() {
         <section>
           <h2 className="text-xl font-semibold text-white mb-3">2. Description of Service</h2>
           <p>
-            ShoeBudgeting provides personal finance management tools, including budget tracking, expense categorization, 
+            Shoe Budgeting provides personal finance management tools, including budget tracking, expense categorization, 
             paycheck analytics, and bank account synchronization via third-party providers.
           </p>
         </section>
@@ -45,7 +45,7 @@ export default function TermsOfServicePage() {
         <section>
           <h2 className="text-xl font-semibold text-white mb-3">5. Disclaimer of Financial Advice</h2>
           <p>
-            ShoeBudgeting and Shoetinblanks LLC do not provide professional financial, legal, or tax advice. The platform 
+            Shoe Budgeting and Shoetinblanks LLC do not provide professional financial, legal, or tax advice. The platform 
             is intended for informational and organizational purposes only. You should consult with a licensed professional 
             for specific financial advice.
           </p>

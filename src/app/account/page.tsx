@@ -1,22 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { User, DollarSign, Target, Shield, Plus, Trash2, Save } from 'lucide-react'
 import CheckStubUploader from '@/components/CheckStubUploader'
-
-interface IncomeSource {
-  id?: string
-  user_id?: string
-  employer_name: string
-  pay_frequency: string
-  gross_amount?: number
-  net_amount?: number
-  taxes?: number
-  deductions?: number
-  isNew?: boolean
-}
+import { getAccountData, saveProfile, saveIncomeSources, deleteIncomeSource } from '@/actions/budget'
+import { authClient } from '@/lib/auth-client'
+import { IncomeSource } from '@/app/types'
 
 export default function AccountPage() {
   const [activeSection, setActiveSection] = useState('profile')
@@ -25,69 +15,70 @@ export default function AccountPage() {
   const [incomeAvgMonths, setIncomeAvgMonths] = useState<number>(12)
   const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([])
   const [newEmail, setNewEmail] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
-  const supabase = createClient()
   const router = useRouter()
 
   useEffect(() => {
     async function loadData() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        router.push('/login')
-        return
-      }
+      try {
+        const res = await getAccountData()
+        if (!res.authenticated) {
+          router.push('/login')
+          return
+        }
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single()
-
-      const { data: incomes } = await supabase
-        .from('income_sources')
-        .select('*')
-        .eq('user_id', user.id)
-
-      if (profile) {
-        setFriendlyName(profile.friendly_name || '')
-        setRoundUpTarget(profile.round_up_target || 10)
-        setIncomeAvgMonths(profile.income_avg_months || 12)
+        if (res.profile) {
+          setFriendlyName(res.profile.friendly_name || '')
+          setRoundUpTarget(res.profile.round_up_target || 10)
+          setIncomeAvgMonths(res.profile.income_avg_months || 12)
+        }
+        if (res.incomeSources) {
+          setIncomeSources(res.incomeSources)
+        }
+      } catch (err: unknown) {
+        console.error(err)
+      } finally {
+        setLoading(false)
       }
-      if (incomes) {
-        setIncomeSources(incomes)
-      }
-      setLoading(false)
     }
 
     loadData()
-  }, [supabase, router])
+  }, [router])
 
   const handleSaveProfile = async () => {
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    const { error } = await supabase.from('profiles').upsert({
-      id: user?.id,
-      friendly_name: friendlyName,
-      round_up_target: roundUpTarget,
-      income_avg_months: incomeAvgMonths,
-    })
-    if (error) setMessage({ type: 'error', text: error.message })
-    else setMessage({ type: 'success', text: 'Profile updated!' })
-    setSaving(false)
+    setMessage(null)
+    try {
+      await saveProfile({
+        friendly_name: friendlyName,
+        round_up_target: roundUpTarget,
+        income_avg_months: incomeAvgMonths,
+      })
+      setMessage({ type: 'success', text: 'Profile updated!' })
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to update profile.' })
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleAddIncome = () => {
-    setIncomeSources([...incomeSources, { employer_name: '', pay_frequency: 'bi-weekly', gross_amount: 0, net_amount: 0, taxes: 0, deductions: 0, isNew: true }])
+    setIncomeSources([...incomeSources, { employer_name: '', pay_frequency: 'bi-weekly', gross_amount: 0, net_amount: 0, taxes: 0, deductions: 0 }])
   }
 
   const handleRemoveIncome = async (index: number) => {
     const income = incomeSources[index]
     if (income.id) {
-      await supabase.from('income_sources').delete().eq('id', income.id)
+      try {
+        await deleteIncomeSource(income.id)
+      } catch (err) {
+        console.error(err)
+      }
     }
     const newSources = [...incomeSources]
     newSources.splice(index, 1)
@@ -96,37 +87,53 @@ export default function AccountPage() {
 
   const handleSaveIncomes = async () => {
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    const { error } = await supabase.from('income_sources').upsert(
-      incomeSources.map(i => ({
-        ...(i.id ? { id: i.id } : {}),
-        user_id: user?.id,
-        employer_name: i.employer_name,
-        pay_frequency: i.pay_frequency,
-        gross_amount: i.gross_amount || 0,
-        net_amount: i.net_amount || 0,
-        taxes: i.taxes || 0,
-        deductions: i.deductions || 0,
-      }))
-    )
-    if (error) setMessage({ type: 'error', text: error.message })
-    else setMessage({ type: 'success', text: 'Income sources updated!' })
-    setSaving(false)
+    setMessage(null)
+    try {
+      await saveIncomeSources(
+        incomeSources.map(i => ({
+          ...(i.id ? { id: i.id } : {}),
+          employer_name: i.employer_name,
+          pay_frequency: i.pay_frequency,
+          gross_amount: i.gross_amount || 0,
+          net_amount: i.net_amount || 0,
+          taxes: i.taxes || 0,
+          deductions: i.deductions || 0,
+        }))
+      )
+      setMessage({ type: 'success', text: 'Income sources updated!' })
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to update income sources.' })
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleUpdateSecurity = async () => {
     setSaving(true)
-    if (newEmail) {
-      const { error } = await supabase.auth.updateUser({ email: newEmail })
-      if (error) setMessage({ type: 'error', text: error.message })
-      else setMessage({ type: 'success', text: 'Confirmation email sent to new address!' })
+    setMessage(null)
+    try {
+      if (newEmail) {
+        const res = await authClient.changeEmail({
+          newEmail,
+          callbackURL: '/account',
+        })
+        if (res.error) throw new Error(res.error.message)
+        setMessage({ type: 'success', text: 'Confirmation email sent to new address!' })
+      }
+      if (newPassword) {
+        const res = await authClient.changePassword({
+          newPassword,
+          currentPassword,
+          revokeOtherSessions: true,
+        })
+        if (res.error) throw new Error(res.error.message)
+        setMessage({ type: 'success', text: 'Password updated successfully!' })
+      }
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to update credentials.' })
+    } finally {
+      setSaving(false)
     }
-    if (newPassword) {
-      const { error } = await supabase.auth.updateUser({ password: newPassword })
-      if (error) setMessage({ type: 'error', text: error.message })
-      else setMessage({ type: 'success', text: 'Password updated!' })
-    }
-    setSaving(false)
   }
 
   if (loading) return <div className="p-8 text-zinc-500 animate-pulse">Loading account data...</div>
@@ -191,7 +198,7 @@ export default function AccountPage() {
               className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-3 px-6 rounded-xl transition-colors flex items-center gap-2"
             >
               <Save className="w-5 h-5" />
-              Save Profile
+              {saving ? 'Saving...' : 'Save Profile'}
             </button>
           </section>
         )}
@@ -331,7 +338,7 @@ export default function AccountPage() {
                 className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-3 px-6 rounded-xl transition-colors flex items-center gap-2"
               >
                 <Save className="w-5 h-5" />
-                Save Income Sources
+                {saving ? 'Saving...' : 'Save Income Sources'}
               </button>
             )}
           </section>
@@ -373,7 +380,7 @@ export default function AccountPage() {
               className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-3 px-6 rounded-xl transition-colors flex items-center gap-2"
             >
               <Save className="w-5 h-5" />
-              Save Defaults
+              {saving ? 'Saving...' : 'Save Defaults'}
             </button>
           </section>
         )}
@@ -392,7 +399,17 @@ export default function AccountPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-2">Update Password</label>
+                <label className="block text-sm font-medium text-zinc-400 mb-2">Current Password</label>
+                <input 
+                  type="password"
+                  value={currentPassword}
+                  onChange={e => setCurrentPassword(e.target.value)}
+                  placeholder="Current password (required to change password)"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-2">New Password</label>
                 <input 
                   type="password"
                   value={newPassword}
@@ -408,7 +425,7 @@ export default function AccountPage() {
               className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-3 px-6 rounded-xl transition-colors flex items-center gap-2"
             >
               <Shield className="w-5 h-5" />
-              Update Credentials
+              {saving ? 'Updating...' : 'Update Credentials'}
             </button>
           </section>
         )}

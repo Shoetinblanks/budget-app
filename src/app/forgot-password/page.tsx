@@ -1,28 +1,28 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/utils/supabase/client'
+import { authClient } from '@/lib/auth-client'
 import Link from 'next/link'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
   const [loading, setLoading] = useState(false)
-  const supabase = createClient()
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setMessage(null)
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${location.origin}/auth/callback?next=/account/security`,
+    const res = await authClient.forgetPassword({
+      email,
+      redirectTo: '/login',
     })
 
-    if (error) {
-      setMessage({ type: 'error', text: error.message })
+    if (res.error) {
+      setMessage({ type: 'error', text: res.error.message || 'Failed to send reset link.' })
     } else {
-      setMessage({ type: 'success', text: 'Check your email for the password reset link.' })
+      setMessage({ type: 'success', text: 'If an account exists, a password reset link has been sent.' })
     }
     setLoading(false)
   }
@@ -60,7 +60,7 @@ export default function ForgotPasswordPage() {
               disabled={loading}
               className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-xl transition-colors disabled:opacity-50"
             >
-              Send Reset Link
+              {loading ? 'Sending...' : 'Send Reset Link'}
             </button>
           </form>
 

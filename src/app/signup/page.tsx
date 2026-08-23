@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/utils/supabase/client'
+import { signUp } from '@/lib/auth-client'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 export default function SignupPage() {
@@ -9,29 +10,28 @@ export default function SignupPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const supabase = createClient()
+  const router = useRouter()
 
   const handleEmailSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
-    const { error } = await supabase.auth.signUp({
+    const res = await signUp.email({
       email,
       password,
-      options: {
-        emailRedirectTo: `${location.origin}/auth/callback`,
-      },
+      name: email.split('@')[0],
+      callbackURL: '/dashboard',
     })
 
-    if (error) {
-      setError(error.message)
+    if (res.error) {
+      setError(res.error.message || 'Failed to create account.')
       setLoading(false)
       return
     }
 
-    setError('Check your email for the confirmation link.')
-    setLoading(false)
+    router.push('/dashboard')
+    router.refresh()
   }
 
   return (
@@ -40,11 +40,11 @@ export default function SignupPage() {
         <div className="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-3xl p-8 shadow-2xl">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-white mb-2">Create Account</h1>
-            <p className="text-zinc-400">Join ShoeBudgeting</p>
+            <p className="text-zinc-400">Join Shoe Budgeting</p>
           </div>
 
           {error && (
-            <div className={`border rounded-lg p-3 mb-6 text-sm ${error.includes('Check your email') ? 'bg-blue-500/10 border-blue-500/50 text-blue-500' : 'bg-red-500/10 border-red-500/50 text-red-500'}`}>
+            <div className="bg-red-500/10 border border-red-500/50 text-red-500 rounded-lg p-3 mb-6 text-sm">
               {error}
             </div>
           )}
@@ -79,7 +79,7 @@ export default function SignupPage() {
               disabled={loading}
               className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-xl transition-colors disabled:opacity-50"
             >
-              Sign Up
+              {loading ? 'Creating Account...' : 'Sign Up'}
             </button>
           </form>
 
