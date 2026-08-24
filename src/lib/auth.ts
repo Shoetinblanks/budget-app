@@ -7,15 +7,18 @@ import { sendEmail } from './email';
 
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-  secret: process.env.BETTER_AUTH_SECRET || '9efc28054cbbe742c3666b6c2cb1a8ef1f93fbd71bc9d4be2a7a4f91e98d97be',
+  secret: process.env.BETTER_AUTH_SECRET || 'development-secret-key-at-least-32-chars-long',
+  trustedOrigins: [
+    'http://localhost:3000',
+    'https://test.budget.shoetinblanks.com',
+    'https://test-budget.shoetinblanks.com',
+    'https://budget-app-test-43989118408.us-west1.run.app',
+    'https://budget.shoetinblanks.com',
+    'https://budget-app-43989118408.us-west1.run.app',
+  ],
   database: drizzleAdapter(db, {
     provider: 'pg',
-    schema: {
-      user: schema.users,
-      session: schema.sessions,
-      account: schema.authAccounts,
-      verification: schema.verifications,
-    },
+    schema: schema,
   }),
   emailAndPassword: {
     enabled: true,
@@ -41,6 +44,7 @@ export const auth = betterAuth({
       clientId: process.env.GOOGLE_CLIENT_ID || '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
       enabled: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+      scope: ['openid', 'profile', 'email'],
     },
   },
   plugins: [
@@ -54,4 +58,11 @@ export const auth = betterAuth({
       },
     }),
   ],
+  advanced: {
+    useSecureCookies: process.env.NODE_ENV === 'production',
+    defaultCookieAttributes: {
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    },
+  },
 });

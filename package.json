@@ -29,6 +29,7 @@
     "react-plaid-link": "^4.1.1",
     "recharts": "^3.8.1",
     "sharp": "^0.35.3",
+    "socks": "^2.8.9",
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {

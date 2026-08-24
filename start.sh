@@ -6,7 +6,7 @@ echo "=== Initializing Userspace Tailscale ==="
 mkdir -p /var/run/tailscale /var/cache/tailscale /var/lib/tailscale
 
 # Start tailscaled in userspace networking mode
-/app/tailscaled --tun=userspace-networking --socks5-server=localhost:1055 --outbound-http-proxy-listen=localhost:1055 &
+/app/tailscaled --tun=userspace-networking --socks5-server=localhost:1055 --outbound-http-proxy-listen=localhost:1056 &
 
 # Wait for tailscaled socket to be ready
 until [ -S /var/run/tailscale/tailscaled.sock ]; do
@@ -22,6 +22,8 @@ if [ -n "${TAILSCALE_AUTHKEY}" ]; then
   fi
   echo "Executing /app/tailscale up with hostname=${HOSTNAME_VAL} and tags=${TAILSCALE_TAGS}..."
   /app/tailscale up --authkey="${TAILSCALE_AUTHKEY}" --hostname="${HOSTNAME_VAL}" ${TAGS_ARG} --accept-dns=false
+  echo "Warming up Tailscale connection to database..."
+  /app/tailscale ping --until-direct=false -c 1 100.82.185.119 || true
   echo "✅ Tailscale mesh connected!"
 else
   echo "⚠️ TAILSCALE_AUTHKEY not set. Continuing without Tailscale..."
