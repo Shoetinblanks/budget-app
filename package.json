@@ -8,9 +8,13 @@
     "start": "next start",
     "lint": "next lint",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "deploy:test": "./deploy_test.sh",
+    "deploy:prod": "./deploy_prod.sh",
+    "deploy:all": "./deploy_all.sh"
   },
   "dependencies": {
+    "@aws-sdk/client-ses": "^3.1116.0",
     "@better-auth/drizzle-adapter": "^1.7.1",
     "@types/papaparse": "^5.5.2",
     "better-auth": "^1.7.1",

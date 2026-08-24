@@ -4,10 +4,13 @@ import { useState } from 'react'
 import { signUp } from '@/lib/auth-client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import TurnstileWidget from '@/components/TurnstileWidget'
+import { validateTurnstile } from '@/actions/budget'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -16,6 +19,21 @@ export default function SignupPage() {
     e.preventDefault()
     setLoading(true)
     setError(null)
+
+    if (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) {
+      if (!captchaToken) {
+        setError('Please complete the security check.')
+        setLoading(false)
+        return
+      }
+
+      const isValid = await validateTurnstile(captchaToken)
+      if (!isValid) {
+        setError('Security check failed. Please try again.')
+        setLoading(false)
+        return
+      }
+    }
 
     const res = await signUp.email({
       email,
@@ -73,6 +91,8 @@ export default function SignupPage() {
                 placeholder="••••••••"
               />
             </div>
+
+            <TurnstileWidget onVerify={(token) => setCaptchaToken(token)} />
 
             <button
               type="submit"

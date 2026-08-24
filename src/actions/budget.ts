@@ -6,6 +6,11 @@ import { db } from '@/db';
 import * as schema from '@/db/schema';
 import { eq, and, desc, asc, inArray, gte, lte, sql } from 'drizzle-orm';
 import { DEFAULT_CATEGORIES, Account, Category, Expense, Transaction, IncomeSource, CategoryRule, Profile } from '@/app/types';
+import { verifyTurnstileToken } from '@/lib/turnstile';
+
+export async function validateTurnstile(token: string) {
+  return verifyTurnstileToken(token);
+}
 
 async function getAuthSession() {
   const reqHeaders = await headers();
