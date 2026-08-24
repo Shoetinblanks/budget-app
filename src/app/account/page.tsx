@@ -20,6 +20,7 @@ export default function AccountPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  const [userEmail, setUserEmail] = useState<string>('')
 
   const router = useRouter()
 
@@ -36,6 +37,9 @@ export default function AccountPage() {
           setFriendlyName(res.profile.friendly_name || '')
           setRoundUpTarget(res.profile.round_up_target || 10)
           setIncomeAvgMonths(res.profile.income_avg_months || 12)
+        }
+        if (res.user?.email) {
+          setUserEmail(res.user.email)
         }
         if (res.incomeSources) {
           setIncomeSources(res.incomeSources)
@@ -131,6 +135,23 @@ export default function AccountPage() {
       }
     } catch (err: unknown) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to update credentials.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSendSetPasswordLink = async () => {
+    setSaving(true)
+    setMessage(null)
+    try {
+      const res = await authClient.requestPasswordReset({
+        email: userEmail,
+        redirectTo: '/login',
+      })
+      if (res.error) throw new Error(res.error.message)
+      setMessage({ type: 'success', text: 'A link to set your password has been sent to your email.' })
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to send link.' })
     } finally {
       setSaving(false)
     }
@@ -419,14 +440,23 @@ export default function AccountPage() {
                 />
               </div>
             </div>
-            <button 
-              onClick={handleUpdateSecurity}
-              disabled={saving}
-              className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-3 px-6 rounded-xl transition-colors flex items-center gap-2"
-            >
-              <Shield className="w-5 h-5" />
-              {saving ? 'Updating...' : 'Update Credentials'}
-            </button>
+            <div className="flex gap-4 items-center">
+              <button 
+                onClick={handleUpdateSecurity}
+                disabled={saving}
+                className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-3 px-6 rounded-xl transition-colors flex items-center gap-2"
+              >
+                <Shield className="w-5 h-5" />
+                {saving ? 'Updating...' : 'Update Credentials'}
+              </button>
+              <button 
+                onClick={handleSendSetPasswordLink}
+                disabled={saving || !userEmail}
+                className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-3 px-6 rounded-xl transition-colors flex items-center gap-2 border border-zinc-700"
+              >
+                Send Password Reset / Set Link
+              </button>
+            </div>
           </section>
         )}
       </main>

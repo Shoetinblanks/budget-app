@@ -6,6 +6,14 @@ import * as schema from '@/db/schema';
 import { sendEmail } from './email';
 
 export const auth = betterAuth({
+  advanced: {
+    generateId: () => crypto.randomUUID(),
+    useSecureCookies: process.env.NODE_ENV === 'production',
+    defaultCookieAttributes: {
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    },
+  },
   baseURL: process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
   secret: process.env.BETTER_AUTH_SECRET || 'development-secret-key-at-least-32-chars-long',
   trustedOrigins: [
@@ -57,11 +65,4 @@ export const auth = betterAuth({
       },
     }),
   ],
-  advanced: {
-    useSecureCookies: process.env.NODE_ENV === 'production',
-    defaultCookieAttributes: {
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-    },
-  },
 });

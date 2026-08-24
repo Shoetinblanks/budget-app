@@ -70,13 +70,29 @@ export async function getDashboardData() {
     }));
   }
 
-  const profile: Profile | null = rawProfile[0]
+  let profile: Profile | null = rawProfile[0]
     ? {
         friendly_name: rawProfile[0].friendlyName || undefined,
         round_up_target: rawProfile[0].roundUpTarget ?? 10,
         income_avg_months: rawProfile[0].incomeAvgMonths ?? 12,
       }
     : null;
+
+  if (!profile) {
+    try {
+      await db.insert(schema.profiles).values({
+        id: userId,
+        roundUpTarget: 10,
+        incomeAvgMonths: 12,
+      });
+      profile = {
+        round_up_target: 10,
+        income_avg_months: 12,
+      };
+    } catch (e) {
+      console.error('Failed to auto-create profile:', e);
+    }
+  }
 
   const accounts: Account[] = rawAccounts.map((a) => ({
     id: a.id,
@@ -158,13 +174,29 @@ export async function getAccountData() {
     db.select().from(schema.incomeSources).where(eq(schema.incomeSources.userId, userId)),
   ]);
 
-  const profile: Profile | null = rawProfile[0]
+  let profile: Profile | null = rawProfile[0]
     ? {
         friendly_name: rawProfile[0].friendlyName || undefined,
         round_up_target: rawProfile[0].roundUpTarget ?? 10,
         income_avg_months: rawProfile[0].incomeAvgMonths ?? 12,
       }
     : null;
+
+  if (!profile) {
+    try {
+      await db.insert(schema.profiles).values({
+        id: userId,
+        roundUpTarget: 10,
+        incomeAvgMonths: 12,
+      });
+      profile = {
+        round_up_target: 10,
+        income_avg_months: 12,
+      };
+    } catch (e) {
+      console.error('Failed to auto-create profile:', e);
+    }
+  }
 
   const incomeSources: IncomeSource[] = rawIncomes.map((i) => ({
     id: i.id,
