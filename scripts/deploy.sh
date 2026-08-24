@@ -31,7 +31,7 @@ gcloud secrets versions access latest --secret="SHARED_INFRA_SECRETS" > /tmp/dep
 
 echo "-> Fetching app secrets from Google Secret Manager ($SECRET_NAME)..."
 gcloud secrets versions access latest --secret="$SECRET_NAME" >> /tmp/deploy_secrets.env
-
+echo "" >> /tmp/deploy_secrets.env
 echo "TAILSCALE_HOSTNAME=${TS_HOSTNAME}" >> /tmp/deploy_secrets.env
 
 if [ ! -s /tmp/deploy_secrets.env ]; then
