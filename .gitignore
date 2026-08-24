@@ -43,3 +43,9 @@ budget-app_audit.md
 *.env.*
 .env*.local
 secrets/
+
+# Migration & internal infrastructure docs
+*migration*.md
+docs/*migration*.md
+docs/*_migration.md
+docs/budget_app_pure_postgres_migration.md
