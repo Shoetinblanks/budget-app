@@ -10,7 +10,6 @@ export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET || 'development-secret-key-at-least-32-chars-long',
   trustedOrigins: [
     'http://localhost:3000',
-    'https://test.budget.shoetinblanks.com',
     'https://test-budget.shoetinblanks.com',
     'https://budget-app-test-43989118408.us-west1.run.app',
     'https://budget.shoetinblanks.com',
