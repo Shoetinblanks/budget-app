@@ -14,22 +14,25 @@ REGION="us-west1"
 if [ "$ENV" == "test" ]; then
     SERVICE_NAME="budget-app-test"
     SECRET_NAME="BUDGET_TEST_SECRETS"
+    TS_HOSTNAME="budget-staging"
 else
     SERVICE_NAME="budget-app"
     SECRET_NAME="BUDGET_PROD_SECRETS"
+    TS_HOSTNAME="budget-prod"
 fi
 
 echo "================================================="
 echo "Deploying Budget App to Cloud Run ($ENV environment)"
+echo "Service: $SERVICE_NAME"
 echo "================================================="
 
-if [ "$2" != "--skip-migrate" ]; then
-    echo "-> Checking and applying any pending database schema updates..."
-    ./scripts/apply_migrations.sh "$ENV"
-fi
+echo "-> Fetching shared infrastructure secrets (SHARED_INFRA_SECRETS)..."
+gcloud secrets versions access latest --secret="SHARED_INFRA_SECRETS" > /tmp/deploy_secrets.env 2>/dev/null || true
 
-echo "-> Fetching secrets from Google Secret Manager ($SECRET_NAME)..."
-gcloud secrets versions access latest --secret="$SECRET_NAME" > /tmp/deploy_secrets.env
+echo "-> Fetching app secrets from Google Secret Manager ($SECRET_NAME)..."
+gcloud secrets versions access latest --secret="$SECRET_NAME" >> /tmp/deploy_secrets.env
+
+echo "TAILSCALE_HOSTNAME=${TS_HOSTNAME}" >> /tmp/deploy_secrets.env
 
 if [ ! -s /tmp/deploy_secrets.env ]; then
     echo "❌ Failed to retrieve secrets. Exiting."
@@ -37,7 +40,7 @@ if [ ! -s /tmp/deploy_secrets.env ]; then
     exit 1
 fi
 
-echo "-> Converting secrets to YAML for Cloud Buildpacks..."
+echo "-> Converting secrets to YAML for Cloud Run..."
 > /tmp/deploy_secrets.yaml
 while IFS='=' read -r key value; do
     # Skip empty lines and comments
@@ -51,18 +54,15 @@ while IFS='=' read -r key value; do
     echo "${key}: \"${value}\"" >> /tmp/deploy_secrets.yaml
 done < /tmp/deploy_secrets.env
 
-
-echo "-> Triggering Cloud Run deployment..."
-echo "Note: Google Cloud will automatically build your Next.js project. This takes 3-5 minutes."
-
+echo "-> Triggering Cloud Run deployment via Dockerfile..."
 gcloud run deploy "$SERVICE_NAME" \
   --source . \
   --region "$REGION" \
   --allow-unauthenticated \
-  --env-vars-file="/tmp/deploy_secrets.yaml" \
-  --build-env-vars-file="/tmp/deploy_secrets.yaml"
+  --clear-base-image \
+  --env-vars-file="/tmp/deploy_secrets.yaml"
 
-echo "-> Cleaning up temporary files..."
+echo "-> Cleaning up temporary secret files..."
 rm -f /tmp/deploy_secrets.env /tmp/deploy_secrets.yaml
 
 echo "✅ Deployment complete for $ENV!"
