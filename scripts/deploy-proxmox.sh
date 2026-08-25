@@ -1,0 +1,38 @@
+#!/bin/bash
+set -e
+
+if [ "$1" != "test" ] && [ "$1" != "prod" ]; then
+    echo "Usage: ./scripts/deploy-proxmox.sh [test|prod]"
+    exit 1
+fi
+
+ENV=$1
+APP_NAME="budget-app"
+REMOTE_USER="root"
+
+if [ "$ENV" == "test" ]; then
+    REMOTE_HOST="docker-test"
+    ENV_FILE=".env.test"
+else
+    REMOTE_HOST="docker-prod"
+    ENV_FILE=".env.prod"
+fi
+
+echo "🚀 Deploying $APP_NAME to $ENV ($REMOTE_HOST)..."
+
+# Ensure the target directory exists
+ssh $REMOTE_USER@$REMOTE_HOST "mkdir -p /root/$APP_NAME"
+
+# Copy all files over, ignoring node_modules and .git
+echo "📦 Copying files to $REMOTE_HOST..."
+rsync -avz --exclude 'node_modules' --exclude '.git' --exclude '.next' . $REMOTE_USER@$REMOTE_HOST:/root/$APP_NAME/
+
+# Copy the specific environment file as .env
+echo "🔐 Copying $ENV_FILE to remote .env..."
+scp $ENV_FILE $REMOTE_USER@$REMOTE_HOST:/root/$APP_NAME/.env
+
+# Build and deploy using Docker Compose
+echo "🐳 Building and starting Docker containers..."
+ssh $REMOTE_USER@$REMOTE_HOST "cd /root/$APP_NAME && docker compose up -d --build"
+
+echo "✅ Deployment to $ENV complete! 🚀"

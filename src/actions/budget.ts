@@ -1,7 +1,6 @@
 'use server'
 
-import { headers } from 'next/headers';
-import { auth } from '@/lib/auth';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { db } from '@/db';
 import * as schema from '@/db/schema';
 import { eq, and, desc, asc, inArray, gte, lte, sql } from 'drizzle-orm';
@@ -13,14 +12,12 @@ export async function validateTurnstile(token: string) {
 }
 
 async function getAuthSession() {
-  const reqHeaders = await headers();
-  const session = await auth.api.getSession({
-    headers: reqHeaders,
-  });
-  if (!session?.user) {
+  const { userId } = await auth();
+  if (!userId) {
     return null;
   }
-  return session;
+  const user = await currentUser();
+  return { user: { id: userId, email: user?.primaryEmailAddress?.emailAddress || '' } };
 }
 
 export async function getDashboardData() {

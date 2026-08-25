@@ -2,15 +2,15 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useSession } from '@/lib/auth-client'
+import { useUser } from '@clerk/nextjs'
 import { 
   ArrowRight, ShieldCheck, PieChart, Sparkles, Receipt, Lock,
   Info, Check
 } from 'lucide-react'
 
 export default function MarketingHomePage() {
-  const { data: session } = useSession()
-  const isAuthenticated = !!session?.user
+  const { isLoaded, isSignedIn } = useUser()
+  const isAuthenticated = isSignedIn
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col selection:bg-blue-600 selection:text-white">

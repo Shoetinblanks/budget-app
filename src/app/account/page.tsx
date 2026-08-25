@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { User, DollarSign, Target, Shield, Plus, Trash2, Save } from 'lucide-react'
 import CheckStubUploader from '@/components/CheckStubUploader'
 import { getAccountData, saveProfile, saveIncomeSources, deleteIncomeSource } from '@/actions/budget'
-import { authClient } from '@/lib/auth-client'
+import { UserProfile } from '@clerk/nextjs'
 import { IncomeSource } from '@/app/types'
 
 export default function AccountPage() {
@@ -112,50 +112,6 @@ export default function AccountPage() {
     }
   }
 
-  const handleUpdateSecurity = async () => {
-    setSaving(true)
-    setMessage(null)
-    try {
-      if (newEmail) {
-        const res = await authClient.changeEmail({
-          newEmail,
-          callbackURL: '/account',
-        })
-        if (res.error) throw new Error(res.error.message)
-        setMessage({ type: 'success', text: 'Confirmation email sent to new address!' })
-      }
-      if (newPassword) {
-        const res = await authClient.changePassword({
-          newPassword,
-          currentPassword,
-          revokeOtherSessions: true,
-        })
-        if (res.error) throw new Error(res.error.message)
-        setMessage({ type: 'success', text: 'Password updated successfully!' })
-      }
-    } catch (err: unknown) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to update credentials.' })
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleSendSetPasswordLink = async () => {
-    setSaving(true)
-    setMessage(null)
-    try {
-      const res = await authClient.requestPasswordReset({
-        email: userEmail,
-        redirectTo: '/login',
-      })
-      if (res.error) throw new Error(res.error.message)
-      setMessage({ type: 'success', text: 'A link to set your password has been sent to your email.' })
-    } catch (err: unknown) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to send link.' })
-    } finally {
-      setSaving(false)
-    }
-  }
 
   if (loading) return <div className="p-8 text-zinc-500 animate-pulse">Loading account data...</div>
 
@@ -409,53 +365,8 @@ export default function AccountPage() {
         {activeSection === 'security' && (
           <section className="space-y-6 animate-in fade-in duration-300">
             <h2 className="text-2xl font-bold text-white mb-6">Security Settings</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-2">Update Email</label>
-                <input 
-                  value={newEmail}
-                  onChange={e => setNewEmail(e.target.value)}
-                  placeholder="Leave blank to keep current"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-2">Current Password</label>
-                <input 
-                  type="password"
-                  value={currentPassword}
-                  onChange={e => setCurrentPassword(e.target.value)}
-                  placeholder="Current password (required to change password)"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-2">New Password</label>
-                <input 
-                  type="password"
-                  value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
-                  placeholder="Leave blank to keep current"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-            <div className="flex gap-4 items-center">
-              <button 
-                onClick={handleUpdateSecurity}
-                disabled={saving}
-                className="bg-blue-500 hover:bg-blue-600 text-zinc-950 font-bold py-3 px-6 rounded-xl transition-colors flex items-center gap-2"
-              >
-                <Shield className="w-5 h-5" />
-                {saving ? 'Updating...' : 'Update Credentials'}
-              </button>
-              <button 
-                onClick={handleSendSetPasswordLink}
-                disabled={saving || !userEmail}
-                className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-3 px-6 rounded-xl transition-colors flex items-center gap-2 border border-zinc-700"
-              >
-                Send Password Reset / Set Link
-              </button>
+            <div className="w-full bg-white rounded-xl overflow-hidden flex justify-center">
+               <UserProfile routing="hash" />
             </div>
           </section>
         )}
