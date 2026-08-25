@@ -20,12 +20,16 @@ fi
 
 echo "🚀 Deploying $APP_NAME to $ENV ($REMOTE_HOST)..."
 
+# 1. Apply any pending database migrations for this environment
+echo "🗄️ Checking and applying database migrations for $ENV..."
+./scripts/apply_migrations.sh "$ENV"
+
 # Ensure the target directory exists on Proxmox LXC
 ssh $REMOTE_USER@$REMOTE_HOST "mkdir -p /root/$APP_NAME"
 
 # Copy all project files over, ignoring build outputs and node_modules
 echo "📦 Copying files to $REMOTE_HOST..."
-rsync -avz --exclude 'node_modules' --exclude '.git' --exclude '.next' . $REMOTE_USER@$REMOTE_HOST:/root/$APP_NAME/
+rsync -avz --exclude 'node_modules' --exclude '.git' --exclude '.next' --exclude '.env*' --exclude '.DS_Store' . $REMOTE_USER@$REMOTE_HOST:/root/$APP_NAME/
 
 # Copy the specific environment file as .env
 echo "🔐 Copying $ENV_FILE to remote .env..."

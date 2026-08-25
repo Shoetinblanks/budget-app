@@ -8,4 +8,4 @@ This folder stores version-controlled SQL migration files.
 3. Run `./scripts/apply_migrations.sh test` to apply it to the Test database (`budget_preview`).
 4. Run `./scripts/apply_migrations.sh prod` (or `./deploy_prod.sh` / `./deploy_all.sh`) to apply it to the Production database (`budget_prod`) before deploying.
 
-Each migration runs inside a transaction and is recorded in the `public._migrations` table so it is never run twice. When applied to Prod, the script automatically moves the file to `supabase/migrations_archive/`.
+Each migration runs inside a transaction and is recorded in the `public._migrations` table so it is never run twice. When applied to Prod, the script automatically moves the file to `db/migrations_archive/`.
