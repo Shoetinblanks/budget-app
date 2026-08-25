@@ -32,7 +32,7 @@ import {
 interface AuthUser {
   id: string
   email: string
-  name: string
+  name?: string | null
   image?: string | null
 }
 

@@ -12,7 +12,6 @@ export default function Navbar() {
   const mobileRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
 
-  const userEmail = session?.user?.email || null
 
   useEffect(() => {
     // Outside click listener
