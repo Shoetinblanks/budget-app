@@ -1,61 +1,6 @@
 import { pgTable, text, timestamp, boolean, integer, numeric, uuid } from 'drizzle-orm/pg-core';
 
 // ============================================================================
-// Better Auth Schema Tables
-// ============================================================================
-
-export const user = pgTable('user', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  email: text('email').notNull().unique(),
-  emailVerified: boolean('email_verified').notNull().default(false),
-  image: text('image'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
-export const users = user;
-
-export const session = pgTable('session', {
-  id: text('id').primaryKey(),
-  expiresAt: timestamp('expires_at').notNull(),
-  token: text('token').notNull().unique(),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-  ipAddress: text('ip_address'),
-  userAgent: text('user_agent'),
-  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
-});
-export const sessions = session;
-
-export const account = pgTable('account', {
-  id: text('id').primaryKey(),
-  accountId: text('account_id').notNull(),
-  providerId: text('provider_id').notNull(),
-  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
-  accessToken: text('access_token'),
-  refreshToken: text('refresh_token'),
-  idToken: text('id_token'),
-  accessTokenExpiresAt: timestamp('access_token_expires_at'),
-  refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
-  scope: text('scope'),
-  password: text('password'),
-  issuer: text('issuer'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
-export const authAccounts = account;
-
-export const verification = pgTable('verification', {
-  id: text('id').primaryKey(),
-  identifier: text('identifier').notNull(),
-  value: text('value').notNull(),
-  expiresAt: timestamp('expires_at').notNull(),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-});
-export const verifications = verification;
-
-// ============================================================================
 // Application Tables
 // ============================================================================
 
@@ -69,7 +14,7 @@ export const profiles = pgTable('profiles', {
 
 export const accounts = pgTable('accounts', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id'),
+  userId: text('user_id'),
   accountCode: text('account_code'),
   name: text('name').notNull(),
   type: text('type'),
@@ -78,7 +23,7 @@ export const accounts = pgTable('accounts', {
 
 export const categories = pgTable('categories', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id'),
+  userId: text('user_id'),
   name: text('name').notNull(),
   color: text('color').default('#a1a1aa').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
@@ -86,7 +31,7 @@ export const categories = pgTable('categories', {
 
 export const categoryRules = pgTable('category_rules', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id'),
+  userId: text('user_id'),
   merchantPattern: text('merchant_pattern').notNull(),
   category: text('category').notNull(),
   subcategory: text('subcategory'),
@@ -95,7 +40,7 @@ export const categoryRules = pgTable('category_rules', {
 
 export const expenses = pgTable('expenses', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id'),
+  userId: text('user_id'),
   customOrder: integer('custom_order'),
   name: text('name').notNull(),
   monthlyAmount: numeric('monthly_amount'),
@@ -112,7 +57,7 @@ export const expenses = pgTable('expenses', {
 
 export const incomeSources = pgTable('income_sources', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id'),
+  userId: text('user_id'),
   employerName: text('employer_name').notNull(),
   payFrequency: text('pay_frequency').notNull(),
   payDate: text('pay_date'),
@@ -125,7 +70,7 @@ export const incomeSources = pgTable('income_sources', {
 
 export const transactions = pgTable('transactions', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id'),
+  userId: text('user_id'),
   transactionDate: text('transaction_date'),
   postDate: text('post_date'),
   description: text('description').notNull(),
@@ -139,7 +84,7 @@ export const transactions = pgTable('transactions', {
 
 export const plaidItems = pgTable('plaid_items', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id'),
+  userId: text('user_id'),
   accessToken: text('access_token').notNull(),
   itemId: text('item_id').notNull(),
   institutionName: text('institution_name'),

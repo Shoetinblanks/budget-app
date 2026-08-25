@@ -3,16 +3,13 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Settings, Menu, X, User, LogOut, LayoutDashboard, LogIn } from 'lucide-react'
-import { useSession, signOut } from '@/lib/auth-client'
+import { Menu, X, LayoutDashboard } from 'lucide-react'
+import { SignedIn, SignedOut, UserButton, SignInButton, SignUpButton } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 
 export default function Navbar() {
-  const [isGearOpen, setIsGearOpen] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const gearRef = useRef<HTMLDivElement>(null)
   const mobileRef = useRef<HTMLDivElement>(null)
-  const { data: session, isPending } = useSession()
   const router = useRouter()
 
   const userEmail = session?.user?.email || null
@@ -20,9 +17,6 @@ export default function Navbar() {
   useEffect(() => {
     // Outside click listener
     function handleClickOutside(event: MouseEvent) {
-      if (gearRef.current && !gearRef.current.contains(event.target as Node)) {
-        setIsGearOpen(false)
-      }
       if (mobileRef.current && !mobileRef.current.contains(event.target as Node)) {
         setIsMobileMenuOpen(false)
       }
@@ -31,12 +25,6 @@ export default function Navbar() {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
-
-  const handleSignOut = async () => {
-    await signOut()
-    router.push('/login')
-    router.refresh()
-  }
 
   return (
     <nav className="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800">
@@ -57,52 +45,24 @@ export default function Navbar() {
           </Link>
 
           {/* Right: Desktop Navigation */}
-          {userEmail ? (
+          <SignedIn>
             <div className="hidden md:flex items-center gap-6">
               <Link href="/dashboard" className="text-zinc-300 hover:text-white transition-colors text-sm font-medium">
                 Dashboard
               </Link>
               
-              <div className="relative" ref={gearRef}>
-                <button 
-                  onClick={() => setIsGearOpen(!isGearOpen)}
-                  className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-lg transition-all"
-                  aria-label="Settings"
-                >
-                  <Settings className="w-5 h-5" />
-                </button>
-
-                {isGearOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl py-2 overflow-hidden animate-in fade-in zoom-in duration-200">
-                    <Link 
-                      href="/account" 
-                      onClick={() => setIsGearOpen(false)}
-                      className="flex items-center gap-3 px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
-                    >
-                      <User className="w-4 h-4 text-blue-500" />
-                      Profile
-                    </Link>
-                    <Link 
-                      href="/account#defaults" 
-                      onClick={() => setIsGearOpen(false)}
-                      className="flex items-center gap-3 px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
-                    >
-                      <Settings className="w-4 h-4 text-blue-500" />
-                      Settings
-                    </Link>
-                    <hr className="border-zinc-800 my-1" />
-                    <button 
-                      onClick={handleSignOut}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      Sign Out
-                    </button>
-                  </div>
-                )}
-              </div>
+              <UserButton 
+                afterSignOutUrl="/"
+                appearance={{
+                  elements: {
+                    avatarBox: "w-10 h-10 border-2 border-zinc-800"
+                  }
+                }}
+              />
             </div>
-          ) : (
+          </SignedIn>
+          
+          <SignedOut>
             <div className="hidden md:flex items-center gap-6">
               <Link href="/privacy-policy" className="text-zinc-400 hover:text-zinc-200 text-sm font-medium transition-colors">
                 Privacy
@@ -110,20 +70,20 @@ export default function Navbar() {
               <Link href="/terms-of-service" className="text-zinc-400 hover:text-zinc-200 text-sm font-medium transition-colors">
                 Terms
               </Link>
-              <Link 
-                href="/login" 
-                className="text-zinc-200 hover:text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-zinc-900 transition-colors"
-              >
-                Log In
-              </Link>
-              <Link 
-                href="/login?signup=true" 
-                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold shadow-md shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-              >
-                Get Started
-              </Link>
+              
+              <SignInButton mode="modal">
+                <button className="text-zinc-200 hover:text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-zinc-900 transition-colors">
+                  Log In
+                </button>
+              </SignInButton>
+              
+              <SignUpButton mode="modal">
+                <button className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold shadow-md shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-[0.98]">
+                  Get Started
+                </button>
+              </SignUpButton>
             </div>
-          )}
+          </SignedOut>
 
           {/* Right: Mobile Hamburger */}
           <div className="md:hidden" ref={mobileRef}>
@@ -137,55 +97,42 @@ export default function Navbar() {
 
             {isMobileMenuOpen && (
               <div className="absolute top-20 left-0 right-0 bg-zinc-900 border-b border-zinc-800 shadow-2xl py-4 px-4 space-y-2">
-                {userEmail ? (
-                  <>
-                    <Link 
-                      href="/dashboard" 
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className="flex items-center gap-3 p-3 text-zinc-300 hover:bg-zinc-800 rounded-xl"
-                    >
-                      <LayoutDashboard className="w-5 h-5 text-blue-500" />
-                      Dashboard
-                    </Link>
-                    <Link 
-                      href="/account" 
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className="flex items-center gap-3 p-3 text-zinc-300 hover:bg-zinc-800 rounded-xl"
-                    >
-                      <User className="w-5 h-5 text-blue-500" />
-                      Profile & Settings
-                    </Link>
+                <SignedIn>
+                  <Link 
+                    href="/dashboard" 
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex items-center gap-3 p-3 text-zinc-300 hover:bg-zinc-800 rounded-xl"
+                  >
+                    <LayoutDashboard className="w-5 h-5 text-blue-500" />
+                    Dashboard
+                  </Link>
+                  <div className="flex justify-center p-3">
+                    <UserButton afterSignOutUrl="/" />
+                  </div>
+                </SignedIn>
+                
+                <SignedOut>
+                  <SignInButton mode="modal">
                     <button 
-                      onClick={handleSignOut}
-                      className="w-full flex items-center gap-3 p-3 text-red-400 hover:bg-red-500/10 rounded-xl"
-                    >
-                      <LogOut className="w-5 h-5" />
-                      Sign Out
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <Link 
-                      href="/login" 
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className="flex items-center gap-3 p-3 text-zinc-200 hover:bg-zinc-800 rounded-xl font-medium"
+                      className="w-full text-left flex items-center gap-3 p-3 text-zinc-200 hover:bg-zinc-800 rounded-xl font-medium"
                     >
-                      <LogIn className="w-5 h-5 text-blue-500" />
                       Log In
-                    </Link>
-                    <Link 
-                      href="/login?signup=true" 
+                    </button>
+                  </SignInButton>
+                  <SignUpButton mode="modal">
+                    <button 
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className="flex items-center justify-center p-3 bg-blue-600 text-white font-semibold rounded-xl"
+                      className="w-full flex items-center justify-center p-3 bg-blue-600 text-white font-semibold rounded-xl"
                     >
                       Get Started
-                    </Link>
-                    <div className="pt-2 border-t border-zinc-800 flex justify-around text-xs text-zinc-400">
-                      <Link href="/privacy-policy" onClick={() => setIsMobileMenuOpen(false)}>Privacy Policy</Link>
-                      <Link href="/terms-of-service" onClick={() => setIsMobileMenuOpen(false)}>Terms of Service</Link>
-                    </div>
-                  </>
-                )}
+                    </button>
+                  </SignUpButton>
+                  <div className="pt-2 border-t border-zinc-800 flex justify-around text-xs text-zinc-400">
+                    <Link href="/privacy-policy" onClick={() => setIsMobileMenuOpen(false)}>Privacy Policy</Link>
+                    <Link href="/terms-of-service" onClick={() => setIsMobileMenuOpen(false)}>Terms of Service</Link>
+                  </div>
+                </SignedOut>
               </div>
             )}
           </div>
