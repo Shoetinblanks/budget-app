@@ -1,5 +1,5 @@
 {
-  "name": "tmp-budget-app",
+  "name": "budget-app",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -7,8 +7,6 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio",
     "deploy:test": "./deploy_test.sh",
     "deploy:prod": "./deploy_prod.sh",
     "deploy:all": "./deploy_all.sh"
@@ -17,25 +15,20 @@
     "@aws-sdk/client-ses": "^3.1116.0",
     "@clerk/nextjs": "^5.7.6",
     "@types/papaparse": "^5.5.2",
-    "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.14.0",
     "next": "14.2.35",
     "papaparse": "^5.5.3",
-    "plaid": "^42.2.0",
     "postgres": "^3.4.5",
     "react": "^18",
     "react-dom": "^18",
-    "react-plaid-link": "^4.1.1",
     "recharts": "^3.8.1",
     "sharp": "^0.35.3",
-    "socks": "^2.8.9",
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "drizzle-kit": "^0.31.10",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
     "postcss": "^8",

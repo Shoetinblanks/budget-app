@@ -34,7 +34,7 @@ console.log(`=================================================================`)
 console.log(`🚀 Running Database Migrations for [${env}]...`);
 console.log(`=================================================================`);
 
-const sql = postgres(dbUrl, { max: 1, connect_timeout: 10 });
+const sql = postgres(dbUrl, { max: 1, connect_timeout: 10, onnotice: () => {} });
 
 try {
   // Ensure _migrations table exists

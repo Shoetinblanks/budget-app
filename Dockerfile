@@ -1,17 +1,23 @@
 # Step 1: Base & Dependencies
 FROM node:22-alpine AS deps
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+ENV NPM_CONFIG_FUND=false
+ENV NPM_CONFIG_AUDIT=false
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund --loglevel=error
 
 # Step 2: Builder
 FROM node:22-alpine AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+ENV NPM_CONFIG_FUND=false
+ENV NPM_CONFIG_AUDIT=false
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
 RUN npm run build
 
 # Step 3: Production Runner
