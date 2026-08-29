@@ -29,7 +29,7 @@ ssh $REMOTE_USER@$REMOTE_HOST "mkdir -p /root/$APP_NAME"
 
 # Copy all project files over, ignoring build outputs and node_modules
 echo "📦 Copying files to $REMOTE_HOST..."
-rsync -avz --exclude 'node_modules' --exclude '.git' --exclude '.next' --exclude '.env*' --exclude '.DS_Store' --exclude 'docs' --exclude '.agents' . $REMOTE_USER@$REMOTE_HOST:/root/$APP_NAME/
+rsync -avz --delete --exclude 'node_modules' --exclude '.git' --exclude '.next' --exclude '.env*' --exclude '.DS_Store' --exclude 'docs' --exclude '.agents' . $REMOTE_USER@$REMOTE_HOST:/root/$APP_NAME/
 
 # Copy the specific environment file as .env
 echo "🔐 Copying $ENV_FILE to remote .env..."
